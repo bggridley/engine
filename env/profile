@@ -1,0 +1,8 @@
+REPO=$(git rev-parse --show-toplevel)
+TARGET="x86_64-pc-windows-gnu"
+WINDOWS_PATH=Users/bggri/engine.exe
+
+build() {
+    cargo build --release --target $TARGET
+    cp $REPO/target/$TARGET/release/engine.exe /mnt/c/Users/bggri/engine.exe
+}

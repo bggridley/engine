@@ -2,14 +2,14 @@
 
 use std::default::Default;
 use std::error::Error;
+use std::ffi;
 use std::io::Cursor;
 use std::mem;
-use std::mem::{align_of, size_of, size_of_val}; // TODO: Remove when bumping MSRV to 1.80
 use std::os::raw::c_void;
 
 use ash::util::*;
 use ash::vk;
-use ash_examples::*;
+use engine::*;
 
 #[derive(Clone, Debug, Copy)]
 struct Vertex {
@@ -98,7 +98,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .collect();
         let index_buffer_data = [0u32, 1, 2, 2, 3, 0];
         let index_buffer_info = vk::BufferCreateInfo {
-            size: size_of_val(&index_buffer_data) as u64,
+            size: mem::size_of_val(&index_buffer_data) as u64,
             usage: vk::BufferUsageFlags::INDEX_BUFFER,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             ..Default::default()
@@ -131,7 +131,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .unwrap();
         let mut index_slice = Align::new(
             index_ptr,
-            align_of::<u32>() as u64,
+            mem::align_of::<u32>() as u64,
             index_buffer_memory_req.size,
         );
         index_slice.copy_from_slice(&index_buffer_data);
@@ -159,7 +159,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             },
         ];
         let vertex_input_buffer_info = vk::BufferCreateInfo {
-            size: size_of_val(&vertices) as u64,
+            size: mem::size_of_val(&vertices) as u64,
             usage: vk::BufferUsageFlags::VERTEX_BUFFER,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             ..Default::default()
@@ -199,7 +199,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .unwrap();
         let mut slice = Align::new(
             vert_ptr,
-            align_of::<Vertex>() as u64,
+            mem::align_of::<Vertex>() as u64,
             vertex_input_buffer_memory_req.size,
         );
         slice.copy_from_slice(&vertices);
@@ -215,7 +215,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             _pad: 0.0,
         };
         let uniform_color_buffer_info = vk::BufferCreateInfo {
-            size: size_of_val(&uniform_color_buffer_data) as u64,
+            size: mem::size_of_val(&uniform_color_buffer_data) as u64,
             usage: vk::BufferUsageFlags::UNIFORM_BUFFER,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             ..Default::default()
@@ -254,7 +254,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .unwrap();
         let mut uniform_aligned_slice = Align::new(
             uniform_ptr,
-            align_of::<Vector3>() as u64,
+            mem::align_of::<Vector3>() as u64,
             uniform_color_buffer_memory_req.size,
         );
         uniform_aligned_slice.copy_from_slice(&[uniform_color_buffer_data]);
@@ -270,7 +270,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let image_extent = vk::Extent2D { width, height };
         let image_data = image.into_raw();
         let image_buffer_info = vk::BufferCreateInfo {
-            size: (size_of::<u8>() * image_data.len()) as u64,
+            size: (mem::size_of::<u8>() * image_data.len()) as u64,
             usage: vk::BufferUsageFlags::TRANSFER_SRC,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             ..Default::default()
@@ -304,7 +304,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .unwrap();
         let mut image_slice = Align::new(
             image_ptr,
-            align_of::<u8>() as u64,
+            mem::align_of::<u8>() as u64,
             image_buffer_memory_req.size,
         );
         image_slice.copy_from_slice(&image_data);
@@ -352,8 +352,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         record_submit_commandbuffer(
             &base.device,
-            base.app_setup_command_buffer,
-            vk::Fence::null(),
+            base.setup_command_buffer,
+            base.setup_commands_reuse_fence,
             base.present_queue,
             &[],
             &[],
@@ -510,7 +510,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let uniform_color_buffer_descriptor = vk::DescriptorBufferInfo {
             buffer: uniform_color_buffer,
             offset: 0,
-            range: size_of_val(&uniform_color_buffer_data) as u64,
+            range: mem::size_of_val(&uniform_color_buffer_data) as u64,
         };
 
         let tex_descriptor = vk::DescriptorImageInfo {
@@ -567,7 +567,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .create_pipeline_layout(&layout_create_info, None)
             .unwrap();
 
-        let shader_entry_name = c"main";
+        let shader_entry_name = ffi::CStr::from_bytes_with_nul_unchecked(b"main\0");
         let shader_stage_create_infos = [
             vk::PipelineShaderStageCreateInfo {
                 module: vertex_shader_module,
@@ -584,7 +584,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ];
         let vertex_input_binding_descriptions = [vk::VertexInputBindingDescription {
             binding: 0,
-            stride: size_of::<Vertex>() as u32,
+            stride: mem::size_of::<Vertex>() as u32,
             input_rate: vk::VertexInputRate::VERTEX,
         }];
         let vertex_input_attribute_descriptions = [
@@ -687,19 +687,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let graphic_pipeline = graphics_pipelines[0];
 
-        let _ = base.render_loop(|frame_index| {
-            let present_complete_semaphore =
-                base.present_complete_semaphores[frame_index % MAX_FRAME_LATENCY];
-            let draw_commands_reuse_fence =
-                base.draw_commands_reuse_fences[frame_index % MAX_FRAME_LATENCY];
-            let draw_command_buffer = base.draw_command_buffers[frame_index % MAX_FRAME_LATENCY];
-
+        let _ = base.render_loop(|| {
             let (present_index, _) = base
                 .swapchain_loader
                 .acquire_next_image(
                     base.swapchain,
-                    u64::MAX,
-                    present_complete_semaphore,
+                    std::u64::MAX,
+                    base.present_complete_semaphore,
                     vk::Fence::null(),
                 )
                 .unwrap();
@@ -717,9 +711,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 },
             ];
 
-            let rendering_complete_semaphore =
-                base.rendering_complete_semaphores[present_index as usize];
-
             let render_pass_begin_info = vk::RenderPassBeginInfo::default()
                 .render_pass(renderpass)
                 .framebuffer(framebuffers[present_index as usize])
@@ -728,12 +719,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             record_submit_commandbuffer(
                 &base.device,
-                draw_command_buffer,
-                draw_commands_reuse_fence,
+                base.draw_command_buffer,
+                base.draw_commands_reuse_fence,
                 base.present_queue,
                 &[vk::PipelineStageFlags::BOTTOM_OF_PIPE],
-                &[present_complete_semaphore],
-                &[rendering_complete_semaphore],
+                &[base.present_complete_semaphore],
+                &[base.rendering_complete_semaphore],
                 |device, draw_command_buffer| {
                     device.cmd_begin_render_pass(
                         draw_command_buffer,
@@ -782,7 +773,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             );
             let present_info = vk::PresentInfoKHR {
                 wait_semaphore_count: 1,
-                p_wait_semaphores: &rendering_complete_semaphore,
+                p_wait_semaphores: &base.rendering_complete_semaphore,
                 swapchain_count: 1,
                 p_swapchains: &base.swapchain,
                 p_image_indices: &present_index,

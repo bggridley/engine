@@ -22,3 +22,14 @@ gendef vulkan-1.dll
 x86_64-w64-mingw32-dlltool \
     -d vulkan-1.def \
     -l libvulkan-1.a
+
+
+### Ben TODO
+
+Figure out how to use enums / traits to control RenderTargets -- basically
+
+In editor mode: use the Swapchain render target that will be created
+Otherwise: use the Framebuffer render target
+
+Either we use this to control things or we use some higher level abstraction to determine
+what render target we use. Either way, Rust is nice for some of this stuff (I think).

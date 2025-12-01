@@ -2,9 +2,9 @@
 
 use std::default::Default;
 use std::error::Error;
-use std::ffi;
 use std::io::Cursor;
 use std::mem;
+use std::mem::{align_of, size_of, size_of_val}; // TODO: Remove when bumping MSRV to 1.80
 
 use ash::util::*;
 use ash::vk;
@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let index_buffer_data = [0u32, 1, 2];
         let index_buffer_info = vk::BufferCreateInfo::default()
-            .size(mem::size_of_val(&index_buffer_data) as u64)
+            .size(size_of_val(&index_buffer_data) as u64)
             .usage(vk::BufferUsageFlags::INDEX_BUFFER)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
 
@@ -122,7 +122,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .unwrap();
         let mut index_slice = Align::new(
             index_ptr,
-            mem::align_of::<u32>() as u64,
+            align_of::<u32>() as u64,
             index_buffer_memory_req.size,
         );
         index_slice.copy_from_slice(&index_buffer_data);
@@ -132,7 +132,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .unwrap();
 
         let vertex_input_buffer_info = vk::BufferCreateInfo {
-            size: 3 * mem::size_of::<Vertex>() as u64,
+            size: 3 * size_of::<Vertex>() as u64,
             usage: vk::BufferUsageFlags::VERTEX_BUFFER,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             ..Default::default()
@@ -192,7 +192,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let mut vert_align = Align::new(
             vert_ptr,
-            mem::align_of::<Vertex>() as u64,
+            align_of::<Vertex>() as u64,
             vertex_input_buffer_memory_req.size,
         );
         vert_align.copy_from_slice(&vertices);
@@ -229,7 +229,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .create_pipeline_layout(&layout_create_info, None)
             .unwrap();
 
-        let shader_entry_name = ffi::CStr::from_bytes_with_nul_unchecked(b"main\0");
+        let shader_entry_name = c"main";
         let shader_stage_create_infos = [
             vk::PipelineShaderStageCreateInfo {
                 module: vertex_shader_module,
@@ -247,7 +247,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ];
         let vertex_input_binding_descriptions = [vk::VertexInputBindingDescription {
             binding: 0,
-            stride: mem::size_of::<Vertex>() as u32,
+            stride: size_of::<Vertex>() as u32,
             input_rate: vk::VertexInputRate::VERTEX,
         }];
         let vertex_input_attribute_descriptions = [
@@ -349,13 +349,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let graphic_pipeline = graphics_pipelines[0];
 
-        let _ = base.render_loop(|| {
+        let _ = base.render_loop(|frame_index| {
+            let present_complete_semaphore =
+                base.present_complete_semaphores[frame_index % MAX_FRAME_LATENCY];
+            let draw_commands_reuse_fence =
+                base.draw_commands_reuse_fences[frame_index % MAX_FRAME_LATENCY];
+            let draw_command_buffer = base.draw_command_buffers[frame_index % MAX_FRAME_LATENCY];
+
             let (present_index, _) = base
                 .swapchain_loader
                 .acquire_next_image(
                     base.swapchain,
-                    std::u64::MAX,
-                    base.present_complete_semaphore,
+                    u64::MAX,
+                    present_complete_semaphore,
                     vk::Fence::null(),
                 )
                 .unwrap();
@@ -373,6 +379,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 },
             ];
 
+            let rendering_complete_semaphore =
+                base.rendering_complete_semaphores[present_index as usize];
+
             let render_pass_begin_info = vk::RenderPassBeginInfo::default()
                 .render_pass(renderpass)
                 .framebuffer(framebuffers[present_index as usize])
@@ -381,12 +390,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             record_submit_commandbuffer(
                 &base.device,
-                base.draw_command_buffer,
-                base.draw_commands_reuse_fence,
+                draw_command_buffer,
+                draw_commands_reuse_fence,
                 base.present_queue,
                 &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
-                &[base.present_complete_semaphore],
-                &[base.rendering_complete_semaphore],
+                &[present_complete_semaphore],
+                &[rendering_complete_semaphore],
                 |device, draw_command_buffer| {
                     device.cmd_begin_render_pass(
                         draw_command_buffer,
@@ -425,11 +434,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                     device.cmd_end_render_pass(draw_command_buffer);
                 },
             );
-            let wait_semaphors = [base.rendering_complete_semaphore];
+            let wait_semaphores = [rendering_complete_semaphore];
             let swapchains = [base.swapchain];
             let image_indices = [present_index];
             let present_info = vk::PresentInfoKHR::default()
-                .wait_semaphores(&wait_semaphors) // &base.rendering_complete_semaphore)
+                .wait_semaphores(&wait_semaphores)
                 .swapchains(&swapchains)
                 .image_indices(&image_indices);
 

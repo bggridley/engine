@@ -1,12 +1,11 @@
 REPO=$(git rev-parse --show-toplevel)
 TARGET="x86_64-pc-windows-gnu"
-WINDOWS_PATH=Users/bggri/engine.exe
 
 . "$HOME/.cargo/env"
 
+export RUSTFLAGS="-L $HOME/winlibs/vulkan"
 
 build() {
     cargo build --release --target $TARGET
     cp $REPO/target/$TARGET/release/triangle.exe /mnt/c/Users/bggri/triangle.exe
-    cp $REPO/target/$TARGET/release/texture.exe /mnt/c/Users/bggri/texture.exe
 }

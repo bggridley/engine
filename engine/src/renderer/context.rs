@@ -1,18 +1,30 @@
-use anyhow::Result;
-use std::{sync::Arc, os::raw::c_char};
-
+use anyhow::{anyhow, Result};
+use std::ffi::CStr;
+use std::{os::raw::c_char, sync::Arc};
 use winit::{
-    raw_window_handle::HasDisplayHandle, raw_window_handle::HasWindowHandle, window::Window,
+    raw_window_handle::{HasDisplayHandle, RawDisplayHandle},
+    raw_window_handle::{HasWindowHandle, RawWindowHandle},
+    window::{Window, WindowId},
 };
 
 use ash::{
     // ext::debug_utils,
-    vk, 
-    Entry, Instance
+    vk,
+    Entry,
+    Instance,
 };
 pub struct VulkanContext {
-     entry: Entry,
-     instance: Instance,
+    pub entry: Entry,
+    pub instance: Instance,
+    pub graphics_devices: Vec<(vk::PhysicalDevice, Vec<u32>)>,
+    pub surface_loader: ash::khr::surface::Instance,
+    pub raw_display_handle: RawDisplayHandle,
+    pub raw_window_handle: RawWindowHandle,
+}
+
+pub struct QueueFamilies {
+    pub index: u32,
+    pub properties: vk::QueueFamilyProperties,
 }
 
 impl VulkanContext {
@@ -62,22 +74,107 @@ impl VulkanContext {
 
             let instance: Instance = entry.create_instance(&create_info, None)?;
 
-            let surface = ash_window::create_surface(
-                &entry,
-                &instance,
+            // let surface = ash_window::create_surface(
+            //     &entry,
+            //     &instance,
+            //     raw_display_handle,
+            //     raw_window_handle,
+            //     None,
+            // )?;
+            let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
+
+            // filters down to devices that support
+            let graphics_devices: Vec<(vk::PhysicalDevice, Vec<u32>)> = instance
+                .enumerate_physical_devices()
+                .unwrap()
+                .into_iter()
+                .filter_map(|pdevice| {
+                    // for each physical device, look at its queue families
+                    let queue_families =
+                        instance.get_physical_device_queue_family_properties(pdevice);
+
+                    queue_families.iter().enumerate().find_map(|(_index, info)| {
+                        if info.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
+                            let queue_count = info.queue_count;
+                            // Store indices 0..queue_count
+                            let queue_indices =
+                                (0..queue_count).map(|i| i as u32).collect::<Vec<_>>();
+                            Some((pdevice, queue_indices))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .collect();
+
+            if graphics_devices.is_empty() {
+                return Err(anyhow!("No graphics-capable devices found!"));
+            }
+
+            Ok(Self {
+                entry,
+                instance,
+                graphics_devices,
+                surface_loader,
                 raw_display_handle,
                 raw_window_handle,
-                None,
-            )?;
-
-            let physical_devices = instance.enumerate_physical_devices()?;
-
-            Ok(Self {entry, instance})
+            })
         }
+    }
 
+    // source for this fn:
+    // https://github.com/unknownue/vulkan-tutorial-rust/blob/master/src/utility/tools.rs
+    pub fn vk_to_string(raw_string_array: &[c_char]) -> String {
+        let raw_string = unsafe {
+            let pointer = raw_string_array.as_ptr();
+            CStr::from_ptr(pointer)
+        };
+
+        raw_string
+            .to_str()
+            .expect("Failed to convert vulkan raw string.")
+            .to_owned()
+    }
+
+    pub fn rate_device(id: WindowId, instance: &ash::Instance, device: vk::PhysicalDevice) -> i32 {
+        let props = unsafe { instance.get_physical_device_properties(device) };
+        let mem_props = unsafe { instance.get_physical_device_memory_properties(device) };
+        let device_type = match props.device_type {
+            vk::PhysicalDeviceType::CPU => "Cpu",
+            vk::PhysicalDeviceType::INTEGRATED_GPU => "Integrated GPU",
+            vk::PhysicalDeviceType::DISCRETE_GPU => "Discrete GPU",
+            vk::PhysicalDeviceType::VIRTUAL_GPU => "Virtual GPU",
+            vk::PhysicalDeviceType::OTHER => "Unknown",
+            _ => panic!(),
+        };
+
+        let mut score = 0;
+
+        score += match props.device_type {
+            vk::PhysicalDeviceType::DISCRETE_GPU => 1000,
+            vk::PhysicalDeviceType::INTEGRATED_GPU => 100,
+            _ => 0,
+        };
+
+        let total_mem: u64 = mem_props.memory_heaps[..mem_props.memory_heap_count as usize]
+            .iter()
+            .map(|heap| heap.size)
+            .sum();
+        score += (total_mem / (1024 * 1024)) as i32;
+
+        let device_name = Self::vk_to_string(&props.device_name);
+        println!(
+            "Device for {:?}:\n\t {}, id: {}, type: {}",
+            id, device_name, props.device_id, device_type
+        );
+        score
     }
 }
 
-// impl Drop for Context {
-
-// }
+impl Drop for VulkanContext {
+    fn drop(&mut self) {
+        unsafe {
+            self.instance.destroy_instance(None);
+        }
+    }
+}

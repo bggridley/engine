@@ -33,3 +33,26 @@ Otherwise: use the Framebuffer render target
 
 Either we use this to control things or we use some higher level abstraction to determine
 what render target we use. Either way, Rust is nice for some of this stuff (I think).
+
+Start to break things into logical chunks. Make bin very very very mimimal.
+
+
+
+### Architecture?
+
+              ┌───────────────────────┐
+              │   engine-editor.exe   │
+              │  (ImGui / Tools / HR) │
+              └───────────┬───────────┘
+                          │ loads
+                          ▼
+            ┌────────────────────────────┐
+            │         game.dll           │
+            │    (hot reload logic)      │
+            └───────────┬────────────────┘
+                        uses
+                          ▼
+            ┌────────────────────────────┐
+            │        engine.lib          │
+            │ (renderer, ecs, runtime)   │
+            └────────────────────────────┘

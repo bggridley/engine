@@ -1,0 +1,11 @@
+[package]
+name = "editor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+engine = { path = "../engine" }
+# imgui = { version = "0.12" }
+# imgui-rs-vulkan-renderer = { version = "1.16.0"}
+# imgui-winit-support = { version = "0.12.0" }
+anyhow = "1.0"

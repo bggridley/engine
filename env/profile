@@ -7,5 +7,5 @@ export RUSTFLAGS="-L $HOME/winlibs/vulkan"
 
 build() {
     cargo build --release --target $TARGET
-    cp $REPO/target/$TARGET/release/triangle.exe /mnt/c/Users/bggri/triangle.exe
+    cp $REPO/target/$TARGET/release/editor.exe /mnt/c/Users/bggri/editor.exe
 }

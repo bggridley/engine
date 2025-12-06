@@ -9,6 +9,7 @@ use winit::{
 
 use ash::{
     // ext::debug_utils,
+    khr::{surface, swapchain},
     vk,
     Entry,
     Instance,
@@ -74,13 +75,6 @@ impl VulkanContext {
 
             let instance: Instance = entry.create_instance(&create_info, None)?;
 
-            // let surface = ash_window::create_surface(
-            //     &entry,
-            //     &instance,
-            //     raw_display_handle,
-            //     raw_window_handle,
-            //     None,
-            // )?;
             let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
 
             // filters down to devices that support
@@ -89,27 +83,164 @@ impl VulkanContext {
                 .unwrap()
                 .into_iter()
                 .filter_map(|pdevice| {
-                    // for each physical device, look at its queue families
                     let queue_families =
                         instance.get_physical_device_queue_family_properties(pdevice);
 
-                    queue_families.iter().enumerate().find_map(|(_index, info)| {
-                        if info.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
-                            let queue_count = info.queue_count;
-                            // Store indices 0..queue_count
-                            let queue_indices =
-                                (0..queue_count).map(|i| i as u32).collect::<Vec<_>>();
-                            Some((pdevice, queue_indices))
-                        } else {
-                            None
-                        }
-                    })
+                    let graphics_families: Vec<u32> = queue_families
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(family_index, info)| {
+                            if info.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
+                                Some(family_index as u32)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    if graphics_families.is_empty() {
+                        None
+                    } else {
+                        Some((pdevice, graphics_families))
+                    }
                 })
                 .collect();
 
             if graphics_devices.is_empty() {
                 return Err(anyhow!("No graphics-capable devices found!"));
             }
+
+            // window should outlive this
+            let surface = ash_window::create_surface(
+                &entry,
+                &instance,
+                raw_display_handle,
+                raw_window_handle,
+                None,
+            )?;
+
+            // pick the best physical device and make sure it supports the surface; graphics_queue_indices is &Vec<u32>
+            let (physical_device, graphics_queue_indices) = graphics_devices
+                .iter()
+                .filter(|(pdevice, families)| {
+                    families.iter().any(|&family| {
+                        surface_loader
+                            .get_physical_device_surface_support(*pdevice, family, surface)
+                            .unwrap_or(false)
+                    })
+                })
+                .max_by_key(|(pdevice, _)| {
+                    VulkanContext::rate_device(window.id(), &instance, *pdevice)
+                })
+                .expect("Couldn't find a physical device.");
+
+            let queue_families =
+                instance.get_physical_device_queue_family_properties(*physical_device);
+
+            // use copied because it's all references -- we don't want refs, we want actual values
+            let graphics_family = graphics_queue_indices
+                .iter()
+                .copied()
+                .find(|&i| {
+                    queue_families[i as usize]
+                        .queue_flags
+                        .contains(vk::QueueFlags::GRAPHICS)
+                })
+                .expect("No graphics queue family found");
+
+            let compute_family = graphics_queue_indices
+                .iter()
+                .copied()
+                .find(|&i| {
+                    queue_families[i as usize]
+                        .queue_flags
+                        .contains(vk::QueueFlags::COMPUTE)
+                })
+                .unwrap_or(graphics_family);
+
+            let present_family = graphics_queue_indices
+                .iter()
+                .copied()
+                .find(|&i| {
+                    surface_loader
+                        .get_physical_device_surface_support(*physical_device, i, surface)
+                        .unwrap_or(false)
+                })
+                .unwrap_or(graphics_family);
+
+            let transfer_family = graphics_queue_indices
+                .iter()
+                .copied()
+                .find(|&i| {
+                    queue_families[i as usize]
+                        .queue_flags
+                        .contains(vk::QueueFlags::TRANSFER)
+                })
+                .unwrap_or(graphics_family);
+
+            // Unique families
+            let unique_families: std::collections::HashSet<u32> =
+                [graphics_family, compute_family, present_family]
+                    .iter()
+                    .copied()
+                    .collect();
+
+            let mut queue_create_infos = vec![];
+            let mut queue_priorities_storage: Vec<Vec<f32>> = vec![];
+
+            for &family_index in &unique_families {
+                let queue_count = queue_families[family_index as usize].queue_count;
+                let priorities = vec![1.0f32; queue_count as usize];
+                queue_priorities_storage.push(priorities);
+
+                let mut queue_info = vk::DeviceQueueCreateInfo::default();
+                queue_info.s_type = vk::StructureType::DEVICE_QUEUE_CREATE_INFO;
+                queue_info.queue_family_index = family_index;
+                queue_info.queue_count = queue_count; // create all queues in this family
+                queue_info.p_queue_priorities = queue_priorities_storage.last().unwrap().as_ptr();
+                queue_info.flags = vk::DeviceQueueCreateFlags::empty();
+
+                queue_create_infos.push(queue_info);
+            }
+
+            let device_extension_names_raw = [
+                swapchain::NAME.as_ptr(),
+                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                ash::khr::portability_subset::NAME.as_ptr(),
+            ];
+
+            let features = vk::PhysicalDeviceFeatures {
+                shader_clip_distance: 1,
+                ..Default::default()
+            };
+
+            let mut dynamic_rendering_features =
+                vk::PhysicalDeviceDynamicRenderingFeatures::default().dynamic_rendering(true);
+
+            let mut buffer_device_features =
+                vk::PhysicalDeviceBufferDeviceAddressFeatures::default()
+                    .buffer_device_address(true);
+            // Create logical device
+            let device_create_info = vk::DeviceCreateInfo::default()
+                .queue_create_infos(&queue_create_infos)
+                .enabled_extension_names(&device_extension_names_raw)
+                .enabled_features(&features)
+                .push_next(&mut dynamic_rendering_features)
+                .push_next(&mut buffer_device_features);
+
+            let device = instance
+                .create_device(*physical_device, &device_create_info, None)
+                .expect("Failed to create logical device");
+
+            let graphics_queue = device.get_device_queue(graphics_family, 0);
+            let present_queue = device.get_device_queue(present_family, 0);
+            let compute_queue = device.get_device_queue(compute_family, 0);
+            let transfer_queue = device.get_device_queue(transfer_family, 0);
+
+            println!("Graphics queue:  {:?}", graphics_queue);
+            println!("Present queue:   {:?}", present_queue);
+            println!("Compute queue:   {:?}", compute_queue);
+            println!("Transfer queue:  {:?}", transfer_queue);
 
             Ok(Self {
                 entry,

@@ -16,10 +16,6 @@ impl ApplicationHandler for App {
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.window_handler = Some(WindowHandler::new(event_loop, WindowAttributes::default()).unwrap());
-        
-        if let Some(handler) = self.window_handler.as_mut() {
-            let secondary_window = handler.create_window(event_loop, WindowAttributes::default().with_title("deez nuts")).unwrap();
-        }
     }
     
     fn window_event(

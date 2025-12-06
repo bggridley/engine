@@ -1,39 +1,41 @@
-
 use anyhow::Result;
-use winit::event::WindowEvent;
 use std::{collections::HashMap, sync::Arc};
-use winit::window::{WindowAttributes, WindowId, Window};
+use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
+use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::renderer::VulkanRenderer;
-
+use crate::renderer::VulkanContext;
 
 pub struct WindowHandler {
     renderers: HashMap<WindowId, VulkanRenderer>,
     windows: HashMap<WindowId, Arc<Window>>,
     primary_window_id: WindowId,
+    context: Arc<VulkanContext>,
 }
 
 impl WindowHandler {
-    pub fn new(event_loop: &ActiveEventLoop) -> Result<Self> {
-        let window = Arc::new(event_loop.create_window(WindowAttributes::default())?);
-        let window_id = window.id();
-        let windows = HashMap::from([(window_id, window)]);
+    pub fn new(event_loop: &ActiveEventLoop, attributes: WindowAttributes) -> Result<Self> {
 
-        let renderers = windows.iter().map(|(id, window)| {
-            let renderer = VulkanRenderer::new(window.clone()).unwrap();
+        let window = Arc::new(event_loop.create_window(attributes)?);
+        let primary_window_id = window.id();
 
-            (*id, renderer)
-        }).collect::<HashMap<_,_>>();
+        // this is the global VulkanContext
+        let context = Arc::new(VulkanContext::new(window.clone())?);      
+        let renderer = VulkanRenderer::new(window.clone(), context.clone())?;
 
-        Ok(Self {
-            renderers,
-            windows,
-            primary_window_id: window_id,
-        })
+        let windows: HashMap<WindowId, Arc<Window>> = HashMap::from([(primary_window_id, window)]);
+        let renderers: HashMap<WindowId, VulkanRenderer> = HashMap::from([(primary_window_id, renderer)]);
+
+        Ok(Self{renderers, windows, primary_window_id, context})
     }
 
-    pub fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, event:WindowEvent) {
+    pub fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
         match event {
             WindowEvent::CloseRequested => {
                 if window_id == self.primary_window_id {
@@ -44,7 +46,21 @@ impl WindowHandler {
                 }
             }
             _ => {}
-
         }
+    }
+
+    pub fn create_window(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        attributes: WindowAttributes,
+    ) -> Result<WindowId> {
+        let window = Arc::new(event_loop.create_window(attributes)?);
+        let window_id = window.id();
+        self.windows.insert(window_id, window.clone()); // window is moved into map??
+
+        let renderer = VulkanRenderer::new(window, self.context.clone())?;
+        self.renderers.insert(window_id, renderer);
+
+        Ok(window_id)
     }
 }

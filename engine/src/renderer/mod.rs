@@ -2,12 +2,18 @@ use anyhow::Result;
 use std::sync::Arc;
 use winit::window::Window;
 
-pub struct VulkanRenderer {
+mod context;
+pub use context::VulkanContext;
 
+pub struct VulkanRenderer {
+    context: Arc<VulkanContext>,
 }
 
 impl VulkanRenderer {
-    pub fn new(window: Arc<Window>) -> Result<Self> {
-        Ok(Self{})
+    pub fn new(window: Arc<Window>, context: Arc<VulkanContext>) -> Result<Self> {
+       
+        Ok(Self{
+            context
+        })
     }
 }

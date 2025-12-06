@@ -1,8 +1,10 @@
 
 use winit::application::ApplicationHandler;
 use winit::event_loop::ActiveEventLoop;
-pub use handler::WindowHandler; // re-export this module
+use winit::window::WindowAttributes;
+
 pub use winit::event_loop::EventLoop;
+pub use handler::WindowHandler; // re-export this module
 pub mod handler;
 
 #[derive(Default)]
@@ -13,7 +15,11 @@ pub struct App {
 impl ApplicationHandler for App {
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        self.window_handler = Some(WindowHandler::new(event_loop).unwrap());
+        self.window_handler = Some(WindowHandler::new(event_loop, WindowAttributes::default()).unwrap());
+        
+        if let Some(handler) = self.window_handler.as_mut() {
+            let secondary_window = handler.create_window(event_loop, WindowAttributes::default().with_title("deez nuts")).unwrap();
+        }
     }
     
     fn window_event(

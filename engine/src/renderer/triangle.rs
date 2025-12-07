@@ -19,14 +19,14 @@ pub struct TriangleRenderer {
 }
 
 impl TriangleRenderer {
-    pub fn new(device: &Arc<ash::Device>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(device: &Arc<ash::Device>) -> Result<Self> {
         // Compile shaders from files
 
         let shader_manager = ShaderManager::new()?;
         shader_manager.compile_all_shaders()?;
 
-        let vert_shader_code = ShaderId::BasicVertex.load_shader_bytes(ShaderId::BasicVertex)?;
-        let frag_shader_code = ShaderId::BasicFragment.load_shader_bytes(ShaderId::BasicFragment)?;
+        let vert_shader_code = ShaderId::TriangleVertex.load_shader_bytes()?;
+        let frag_shader_code = ShaderId::TriangleFrag.load_shader_bytes()?;
 
         // Create shader modules
         let vert_module = unsafe {

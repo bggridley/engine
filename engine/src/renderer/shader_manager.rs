@@ -1,9 +1,9 @@
 // ShaderManager needs to be able to compile and manage shaders for the renderer.
 
 use anyhow::Result;
-use shaderc::{
-    Compiler,
-    ShaderKind::{self, Fragment, Vertex},
+use naga::{
+    back::spv,
+    ShaderStage::{Fragment, Vertex},
 };
 
 use strum::IntoEnumIterator;
@@ -11,31 +11,31 @@ use strum_macros::EnumIter;
 
 use std::fs;
 use std::io::{Cursor, Read};
-use std::path::{PathBuf};
+use std::path::PathBuf;
 
 #[derive(EnumIter, Debug)]
 pub enum ShaderId {
-    BasicVertex,
-    BasicFragment,
+    TriangleVertex,
+    TriangleFrag,
 }
 
 // Static metadata associated with each shader
+#[derive(Debug)]
 struct ShaderMeta {
     path: &'static str,
-    kind: ShaderKind,
+    stage: naga::ShaderStage,
 }
 
 impl ShaderId {
     fn meta(&self) -> ShaderMeta {
-
         match self {
-            ShaderId::BasicVertex => ShaderMeta {
-                path: "basic.vert",
-                kind: Vertex,
+            ShaderId::TriangleVertex => ShaderMeta {
+                path: "triangle.vert",
+                stage: Vertex,
             },
-            ShaderId::BasicFragment => ShaderMeta {
-                path: "basic.frag",
-                kind: Fragment,
+            ShaderId::TriangleFrag => ShaderMeta {
+                path: "triangle.frag",
+                stage: Fragment,
             },
         }
     }
@@ -46,25 +46,22 @@ impl ShaderId {
 
     pub fn compiled_path_str(&self) -> String {
         let shader_path = self.path();
-
         let spv_path = shader_path.with_extension(format!(
             "{}.spv",
             shader_path.extension().unwrap().to_string_lossy()
         ));
-
         spv_path.to_string_lossy().into_owned()
     }
 
-    pub fn load_shader_bytes(&self, shader_id: ShaderId) -> Result<Vec<u32>> {
-        let spv_path = shader_id.compiled_path_str();
+    pub fn load_shader_bytes(&self) -> Result<Vec<u32>> {
+        let spv_path = self.compiled_path_str();
         let bytes = std::fs::read(&spv_path)?;
-
         let aligned_bytes = bytemuck::cast_slice(&bytes).to_vec();
         Ok(aligned_bytes)
     }
 
-    pub fn kind(&self) -> ShaderKind {
-        self.meta().kind
+    pub fn stage(&self) -> naga::ShaderStage {
+        self.meta().stage
     }
 
     pub fn all() -> impl Iterator<Item = ShaderId> {
@@ -72,16 +69,11 @@ impl ShaderId {
     }
 }
 
-pub struct ShaderManager {
-    compiler: shaderc::Compiler, // saving this because it will need to be dynamic later for hot-reloading
-}
+pub struct ShaderManager;
 
 impl ShaderManager {
     pub fn new() -> Result<Self> {
-        let compiler = Compiler::new().expect("Failed to initialize shaderc compiler.");
-        //let options = CompileOptions::new()?;
-        // add macro definitions if needed, make options mut
-        Ok(Self { compiler })
+        Ok(Self)
     }
 
     pub fn compile_all_shaders(&self) -> Result<()> {
@@ -91,7 +83,6 @@ impl ShaderManager {
         Ok(())
     }
 
-    // returns an owned string path to the compiled SPIR-V file for loading with ash
     pub fn compile_shader(&self, shader_id: ShaderId) -> Result<String> {
         let meta = shader_id.meta();
         let shader_path = shader_id.path();
@@ -103,17 +94,26 @@ impl ShaderManager {
         let mut source_string = String::new();
         cursor.read_to_string(&mut source_string)?;
 
-        // Compile GLSL -> SPIR-V
-        let compiled = self.compiler.compile_into_spirv(
+        // Parse GLSL with naga
+        let mut frontend = naga::front::glsl::Frontend::default();
+        let module = frontend.parse(
+            &naga::front::glsl::Options::from(meta.stage),
             &source_string,
-            meta.kind,
-            shader_path.to_str().unwrap(),
-            "main",
-            None,
         )?;
 
+        // Validate module
+        let info = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)?;
+
+        // Compile to SPIR-V
+        let spirv = spv::write_vec(&module, &info, &spv::Options::default(), None)?;
+
+        // Write to file
         let spv_path = shader_id.compiled_path_str();
-        fs::write(&spv_path, compiled.as_binary_u8())?;
+        fs::write(&spv_path, bytemuck::cast_slice::<u32, u8>(&spirv))?;
 
         println!("Compiled shader {:?} -> {:?}", shader_id, spv_path);
         Ok(spv_path)

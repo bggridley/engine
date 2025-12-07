@@ -6,6 +6,10 @@ TARGET="x86_64-pc-windows-gnu"
 export RUSTFLAGS="-L $HOME/winlibs/vulkan"
 
 build() {
+    OUTPUT_PATH=/mnt/c/Users/bggri/engine
     cargo build --release --target $TARGET
-    cp $REPO/target/$TARGET/release/editor.exe /mnt/c/Users/bggri/editor.exe
+
+    mkdir -p $OUTPUT_PATH
+    cp $REPO/target/$TARGET/release/editor.exe $OUTPUT_PATH/editor.exe
+    cp -r $REPO/engine/shaders $OUTPUT_PATH/shaders
 }

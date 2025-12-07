@@ -1,6 +1,6 @@
 use anyhow::Result;
 use engine::window::EventLoop;
-use engine::renderer::{VulkanContext, Swapchain, CommandPool, FrameSynchronizer, DynamicRenderingAttachment};
+use engine::renderer::{VulkanContext, Swapchain, CommandPool, FrameSynchronizer, DynamicRenderingAttachment, TriangleRenderer};
 use std::sync::Arc;
 use winit::{
     dpi::LogicalSize,
@@ -9,25 +9,22 @@ use winit::{
 };
 use ash::khr::swapchain::Device as SwapchainDevice;
 use ash::vk;
-use std::time::Instant;
 
 fn main() -> Result<()> {
     let event_loop = EventLoop::new()?;
     
     // Create window
     let window = WindowBuilder::new()
-        .with_title("Vulkan Editor")
+        .with_title("Vulkan Engine")
         .with_inner_size(LogicalSize::new(1280, 720))
         .build(&event_loop)?;
     let window = Arc::new(window);
 
-    // Initialize Vulkan context from engine
+    // Initialize Vulkan
     let context = Arc::new(VulkanContext::new(window.clone())?);
-    
-    // Initialize swapchain loader
     let swapchain_loader = SwapchainDevice::new(&context.instance, &context.device);
     
-    // Initialize swapchain
+    // Create swapchain
     let swapchain = Swapchain::new(
         &context.device,
         &swapchain_loader,
@@ -45,14 +42,12 @@ fn main() -> Result<()> {
         &context.queue_family_indices,
     );
     
-    // Initialize command pool
+    // Create command pool and synchronization
     let command_pool = CommandPool::new(
         &context.device,
         context.queue_family_indices[0],
         2,
     );
-    
-    // Initialize synchronization
     let mut frame_sync = FrameSynchronizer::new(&context.device, 2);
     
     // Get graphics queue
@@ -60,64 +55,14 @@ fn main() -> Result<()> {
         context.device.get_device_queue(context.queue_family_indices[0], 0)
     };
     
-    // Initialize ImGui
-    let mut imgui = imgui::Context::create();
-    imgui.set_ini_filename(None);
-    let mut platform = imgui_winit_support::WinitPlatform::init(&mut imgui);
-    platform.attach_window(
-        imgui.io_mut(),
-        window.as_ref(),
-        imgui_winit_support::HiDpiMode::Default,
-    );
-    imgui.style_mut().window_rounding = 0.0;
-    
-    // Create a dummy render pass for ImGui (required by renderer even though we use dynamic rendering)
-    let render_pass = unsafe {
-        let attachment = vk::AttachmentDescription::default()
-            .format(vk::Format::B8G8R8A8_SRGB)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
-            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR);
+    // Create triangle renderer
+    let triangle_renderer = TriangleRenderer::new(&context.device)?;
 
-        let color_attachment_ref = vk::AttachmentReference::default()
-            .attachment(0)
-            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
-
-        let subpass = vk::SubpassDescription::default()
-            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-            .color_attachments(std::slice::from_ref(&color_attachment_ref));
-
-        let render_pass_info = vk::RenderPassCreateInfo::default()
-            .attachments(std::slice::from_ref(&attachment))
-            .subpasses(std::slice::from_ref(&subpass));
-
-        context.device.create_render_pass(&render_pass_info, None)
-            .expect("Failed to create render pass")
-    };
-    
-    // Initialize ImGui Vulkan renderer
-    let mut renderer = imgui_rs_vulkan_renderer::Renderer::with_default_allocator(
-        &context.instance,
-        context.graphics_devices[0].0,
-        context.device.as_ref().clone(),
-        graphics_queue,
-        command_pool.pool,
-        render_pass,
-        &mut imgui,
-        None,
-    ).expect("Failed to initialize ImGui Vulkan renderer");
-
-    println!("Editor initialized successfully!");
+    println!("Vulkan Engine initialized!");
     println!("Window: {:?}", window.id());
     println!("Swapchain images: {}", swapchain.images.len());
-    println!("Graphics queue family: {}", context.queue_family_indices[0]);
 
     let mut frame_count = 0u32;
-    let mut last_frame = Instant::now();
 
     event_loop.run(move |event, window_target| {
         match event {
@@ -126,43 +71,16 @@ fn main() -> Result<()> {
                     window_target.exit();
                 }
                 WindowEvent::RedrawRequested => {
-                    // Update delta time
-                    let now = Instant::now();
-                    imgui.io_mut().update_delta_time(now - last_frame);
-                    last_frame = now;
-                    
-                    // Prepare ImGui frame
-                    platform.prepare_frame(imgui.io_mut(), window.as_ref()).ok();
-                    
-                    // Build ImGui UI
-                    {
-                        let ui = imgui.frame();
-                        ui.window("ImGui Demo").build(|| {
-                            ui.text("Vulkan Backend is Working!");
-                            ui.separator();
-                            ui.text(format!("Frame: {}", frame_count));
-                            ui.text("ImGui Text Rendering Coming Soon!");
-                            if ui.button("Click me!") {
-                                println!("Button clicked!");
-                            }
-                        });
-                    }
-                    
-                    // Render ImGui to get draw data
-                    let draw_data = imgui.render();
-                    
-                    // Get current frame index and synchronization primitives
+                    // Get frame synchronization primitives
                     let frame_index = frame_sync.current_frame;
                     let image_available = frame_sync.image_available_semaphores[frame_index];
                     let render_finished = frame_sync.render_finished_semaphores[frame_index];
                     let in_flight_fence = frame_sync.in_flight_fences[frame_index];
                     
-                    // Wait for previous frame to complete
+                    // Wait for previous frame
                     unsafe {
-                        context.device.wait_for_fences(&[in_flight_fence], true, u64::MAX)
-                            .expect("Failed to wait for fence");
-                        context.device.reset_fences(&[in_flight_fence])
-                            .expect("Failed to reset fence");
+                        context.device.wait_for_fences(&[in_flight_fence], true, u64::MAX).ok();
+                        context.device.reset_fences(&[in_flight_fence]).ok();
                     }
                     
                     // Acquire swapchain image
@@ -175,29 +93,22 @@ fn main() -> Result<()> {
                         )
                     } {
                         Ok(result) => result,
-                        Err(e) => {
-                            eprintln!("Failed to acquire next image: {:?}", e);
-                            return;
-                        }
+                        Err(_) => return,
                     };
                     
-                    // Get command buffer for this frame
+                    // Get command buffer
                     let cmd_buffer = command_pool.buffers[frame_index];
                     
-                    // Reset and begin recording command buffer
+                    // Record command buffer
                     unsafe {
-                        context.device.reset_command_buffer(
-                            cmd_buffer,
-                            vk::CommandBufferResetFlags::RELEASE_RESOURCES,
-                        ).expect("Failed to reset command buffer");
+                        context.device.reset_command_buffer(cmd_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES).ok();
                         
                         let begin_info = vk::CommandBufferBeginInfo::default()
                             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-                        context.device.begin_command_buffer(cmd_buffer, &begin_info)
-                            .expect("Failed to begin command buffer");
+                        context.device.begin_command_buffer(cmd_buffer, &begin_info).ok();
                     }
                     
-                    // Transition image to attachment optimal
+                    // Transition image
                     unsafe {
                         let barrier = vk::ImageMemoryBarrier::default()
                             .old_layout(vk::ImageLayout::UNDEFINED)
@@ -223,21 +134,14 @@ fn main() -> Result<()> {
                         );
                     }
                     
-                    // Begin dynamic rendering
-                    let mut color_attachment = DynamicRenderingAttachment::color(
-                        swapchain.image_views[image_index as usize],
-                        vk::AttachmentLoadOp::CLEAR,
-                        vk::AttachmentStoreOp::STORE,
-                    );
-                    
-                    // Set clear color to dark blue so we can see it's rendering
-                    color_attachment.clear_value = vk::ClearValue {
-                        color: vk::ClearColorValue {
-                            float32: [0.1, 0.2, 0.4, 1.0],
-                        },
-                    };
-                    
+                    // Begin rendering and draw triangle
                     unsafe {
+                        let color_attachment = DynamicRenderingAttachment::color(
+                            swapchain.image_views[image_index as usize],
+                            vk::AttachmentLoadOp::CLEAR,
+                            vk::AttachmentStoreOp::STORE,
+                        );
+                        
                         let color_attachment_info = vk::RenderingAttachmentInfo::default()
                             .image_view(color_attachment.image_view)
                             .image_layout(color_attachment.image_layout)
@@ -246,73 +150,29 @@ fn main() -> Result<()> {
                             .clear_value(color_attachment.clear_value);
                         
                         let rendering_info = vk::RenderingInfo::default()
-                            .render_area(
-                                vk::Rect2D::default()
-                                    .extent(swapchain.extent),
-                            )
+                            .render_area(vk::Rect2D::default().extent(swapchain.extent))
                             .layer_count(1)
                             .color_attachments(std::slice::from_ref(&color_attachment_info));
                         
                         context.device.cmd_begin_rendering(cmd_buffer, &rendering_info);
                         
-                        // Draw a simple triangle (white)
+                        // Set viewport and scissor
                         let viewport = vk::Viewport::default()
-                            .x(0.0)
-                            .y(0.0)
                             .width(swapchain.extent.width as f32)
                             .height(swapchain.extent.height as f32)
-                            .min_depth(0.0)
                             .max_depth(1.0);
                         context.device.cmd_set_viewport(cmd_buffer, 0, &[viewport]);
                         
-                        let scissor = vk::Rect2D::default()
-                            .offset(vk::Offset2D { x: 0, y: 0 })
-                            .extent(swapchain.extent);
+                        let scissor = vk::Rect2D::default().extent(swapchain.extent);
                         context.device.cmd_set_scissor(cmd_buffer, 0, &[scissor]);
+                        
+                        // Draw triangle
+                        triangle_renderer.draw(&context.device, cmd_buffer);
                         
                         context.device.cmd_end_rendering(cmd_buffer);
                     }
                     
-                    // Render ImGui on top using traditional render pass
-                    unsafe {
-                        let framebuffer = context.device.create_framebuffer(
-                            &vk::FramebufferCreateInfo::default()
-                                .render_pass(render_pass)
-                                .attachments(&[swapchain.image_views[image_index as usize]])
-                                .width(swapchain.extent.width)
-                                .height(swapchain.extent.height)
-                                .layers(1),
-                            None,
-                        ).expect("Failed to create framebuffer");
-                        
-                        let clear_value = vk::ClearValue {
-                            color: vk::ClearColorValue {
-                                float32: [0.1, 0.2, 0.4, 1.0],
-                            },
-                        };
-                        let clear_values = [clear_value];
-                        
-                        let render_pass_info = vk::RenderPassBeginInfo::default()
-                            .render_pass(render_pass)
-                            .framebuffer(framebuffer)
-                            .render_area(
-                                vk::Rect2D::default()
-                                    .extent(swapchain.extent),
-                            )
-                            .clear_values(&clear_values);
-                        
-                        context.device.cmd_begin_render_pass(cmd_buffer, &render_pass_info, vk::SubpassContents::INLINE);
-                        
-                        // Render ImGui draw data
-                        renderer.cmd_draw(cmd_buffer, draw_data)
-                            .expect("Failed to render ImGui");
-                        
-                        context.device.cmd_end_render_pass(cmd_buffer);
-                        
-                        context.device.destroy_framebuffer(framebuffer, None);
-                    }
-                    
-                    // Transition image back for presentation
+                    // Transition image back
                     unsafe {
                         let barrier = vk::ImageMemoryBarrier::default()
                             .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -337,11 +197,10 @@ fn main() -> Result<()> {
                             &[barrier],
                         );
                         
-                        context.device.end_command_buffer(cmd_buffer)
-                            .expect("Failed to end command buffer");
+                        context.device.end_command_buffer(cmd_buffer).ok();
                     }
                     
-                    // Submit command buffer
+                    // Submit and present
                     unsafe {
                         let cmd_buffers = [cmd_buffer];
                         let wait_semaphores = [image_available];
@@ -354,35 +213,27 @@ fn main() -> Result<()> {
                             .wait_dst_stage_mask(&wait_stages)
                             .signal_semaphores(&signal_semaphores);
                         
-                        context.device.queue_submit(graphics_queue, &[submit_info], in_flight_fence)
-                            .expect("Failed to submit to queue");
-                    }
-                    
-                    // Present swapchain image
-                    unsafe {
-                        let render_finished_semaphores = [render_finished];
+                        context.device.queue_submit(graphics_queue, &[submit_info], in_flight_fence).ok();
+                        
+                        let render_finished_sems = [render_finished];
                         let swapchains = [swapchain.swapchain];
                         let image_indices = [image_index];
                         let present_info = vk::PresentInfoKHR::default()
-                            .wait_semaphores(&render_finished_semaphores)
+                            .wait_semaphores(&render_finished_sems)
                             .swapchains(&swapchains)
                             .image_indices(&image_indices);
                         
                         let _ = swapchain_loader.queue_present(graphics_queue, &present_info);
                     }
                     
-                    // Advance to next frame
                     frame_sync.current_frame = (frame_sync.current_frame + 1) % frame_sync.max_frames_in_flight;
                     frame_count += 1;
                     
                     if frame_count % 60 == 0 {
-                        println!("Frames rendered: {}", frame_count);
+                        println!("Frames: {}", frame_count);
                     }
                 }
-                _ => {
-                    // platform.handle_event can only handle Event, but we have WindowEvent here
-                    // We'll just skip it for now - focus on Vulkan rendering
-                }
+                _ => {}
             },
             Event::AboutToWait => {
                 window.request_redraw();

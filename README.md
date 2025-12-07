@@ -23,6 +23,10 @@ x86_64-w64-mingw32-dlltool \
     -d vulkan-1.def \
     -l libvulkan-1.a
 
+### For compiling shaders 
+
+sudo apt-get install build-essential cmake python3
+
 
 ### Ben TODO
 

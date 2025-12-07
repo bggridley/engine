@@ -77,8 +77,7 @@ impl VulkanContext {
 
             // filters down to devices that support
             let graphics_devices: Vec<(vk::PhysicalDevice, Vec<u32>)> = instance
-                .enumerate_physical_devices()
-                .unwrap()
+                .enumerate_physical_devices()?
                 .into_iter()
                 .filter_map(|pdevice| {
                     let queue_families =

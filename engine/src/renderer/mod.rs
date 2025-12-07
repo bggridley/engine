@@ -1,8 +1,3 @@
-use anyhow::Result;
-use std::sync::Arc;
-
-use winit::window::Window;
-
 mod context;
 pub use context::VulkanContext;
 
@@ -18,10 +13,8 @@ pub use sync::FrameSynchronizer;
 pub mod dynamic_rendering;
 pub use dynamic_rendering::{DynamicRenderingAttachment, ViewportScissor, color_attachment, depth_attachment};
 
-pub struct VulkanRenderer {}
+pub mod triangle;
+pub use triangle::{TriangleRenderer, Vertex};
 
-impl VulkanRenderer {
-    pub fn new(_window: Arc<Window>, _context: Arc<VulkanContext>) -> Result<Self> {
-        Ok(Self {})
-    }
-}
+pub mod shader_manager;
+pub use shader_manager::{ShaderManager, ShaderId};

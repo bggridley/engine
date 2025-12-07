@@ -11,6 +11,10 @@ winit = { version = "0.29" }
 ash = { version = "0.38.0", default-features = false, features = ["linked", "debug", "std"] }
 ash-window = { version = "0.13.0" }
 anyhow = "1.0"
+shaderc = "0.10.1"
+strum = "0.27.2"
+strum_macros = "0.27.2"
+bytemuck = "1.24.0"
 
 [lib]
 # This tells Cargo it’s a library crate

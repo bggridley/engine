@@ -9,7 +9,7 @@ use winit::{
 
 use ash::{
     // ext::debug_utils,
-    khr::{surface, swapchain},
+    khr::swapchain,
     vk,
     Entry,
     Instance,
@@ -21,11 +21,9 @@ pub struct VulkanContext {
     pub surface_loader: ash::khr::surface::Instance,
     pub raw_display_handle: RawDisplayHandle,
     pub raw_window_handle: RawWindowHandle,
-}
-
-pub struct QueueFamilies {
-    pub index: u32,
-    pub properties: vk::QueueFamilyProperties,
+    pub device: std::sync::Arc<ash::Device>,
+    pub surface: ash::vk::SurfaceKHR,
+    pub queue_family_indices: Vec<u32>,
 }
 
 impl VulkanContext {
@@ -242,6 +240,7 @@ impl VulkanContext {
             println!("Compute queue:   {:?}", compute_queue);
             println!("Transfer queue:  {:?}", transfer_queue);
 
+            let device_arc = Arc::new(device);
             Ok(Self {
                 entry,
                 instance,
@@ -249,6 +248,9 @@ impl VulkanContext {
                 surface_loader,
                 raw_display_handle,
                 raw_window_handle,
+                device: device_arc,
+                surface,
+                queue_family_indices: unique_families.iter().copied().collect(),
             })
         }
     }

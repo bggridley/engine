@@ -1,21 +1,23 @@
-use crate::renderer::{CommandPool, FrameSynchronizer, Swapchain, VulkanContext};
+use crate::renderer::{CommandPool, FrameSynchronizer, PipelineManager, Swapchain, VulkanContext};
 use anyhow::Result;
 use ash::{vk, Device};
 use std::sync::Arc;
 
 /// High-level rendering context for command recording
-pub struct RenderContext {
+pub struct RenderContext<'a> {
     device: Arc<Device>,
     cmd_buffer: vk::CommandBuffer,
     extent: vk::Extent2D,
+    pipeline_manager: &'a mut PipelineManager,
 }
 
-impl RenderContext {
-    fn new(device: Arc<Device>, cmd_buffer: vk::CommandBuffer, extent: vk::Extent2D) -> Self {
+impl<'a> RenderContext<'a> {
+    fn new(device: Arc<Device>, cmd_buffer: vk::CommandBuffer, extent: vk::Extent2D, pipeline_manager: &'a mut PipelineManager) -> Self {
         RenderContext {
             device,
             cmd_buffer,
             extent,
+            pipeline_manager,
         }
     }
 
@@ -112,7 +114,14 @@ impl RenderContext {
         }
     }
 
-    /// Bind a pipeline
+    /// Bind pipeline by ID (uses pipeline manager)
+    pub fn bind_pipeline_id(&mut self, id: crate::renderer::PipelineId) -> Result<()> {
+        let pipeline = self.pipeline_manager.get(id)?;
+        self.bind_pipeline(pipeline);
+        Ok(())
+    }
+
+    /// Bind pipeline directly
     pub fn bind_pipeline(&self, pipeline: vk::Pipeline) {
         unsafe {
             self.device.cmd_bind_pipeline(
@@ -130,6 +139,13 @@ impl RenderContext {
         }
     }
 
+    /// Bind index buffer
+    pub fn bind_index_buffer(&self, buffer: vk::Buffer) {
+        unsafe {
+            self.device.cmd_bind_index_buffer(self.cmd_buffer, buffer, 0, vk::IndexType::UINT32);
+        }
+    }
+
     /// Draw vertices
     pub fn draw(&self, vertex_count: u32, instance_count: u32, first_vertex: u32, first_instance: u32) {
         unsafe {
@@ -142,11 +158,25 @@ impl RenderContext {
             );
         }
     }
+
+    /// Draw indexed vertices
+    pub fn draw_indexed(&self, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32) {
+        unsafe {
+            self.device.cmd_draw_indexed(
+                self.cmd_buffer,
+                index_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
+            );
+        }
+    }
 }
 
 /// Trait for anything that can be rendered
 pub trait Renderable {
-    fn render(&self, ctx: &RenderContext) -> Result<()>;
+    fn render(&self, ctx: &mut RenderContext) -> Result<()>;
 }
 
 pub struct Renderer {
@@ -155,6 +185,7 @@ pub struct Renderer {
     swapchain_loader: Arc<ash::khr::swapchain::Device>,
     command_pool: CommandPool,
     frame_sync: FrameSynchronizer,
+    pipeline_manager: PipelineManager,
     graphics_queue: vk::Queue,
     needs_rebuild: bool,
     current_frame: usize,
@@ -206,12 +237,20 @@ impl Renderer {
             context.device.get_device_queue(context.queue_family_indices[0], 0)
         };
 
+        // Compile shaders and build all pipelines up front
+        let shader_manager = crate::renderer::ShaderManager::new()?;
+        shader_manager.compile_all_shaders()?;
+        
+        let mut pipeline_manager = PipelineManager::new((*context.device).clone());
+        pipeline_manager.build_all()?;
+
         Ok(Self {
             context,
             swapchain,
             swapchain_loader,
             command_pool,
             frame_sync,
+            pipeline_manager,
             graphics_queue,
             needs_rebuild: false,
             current_frame: 0,
@@ -288,6 +327,7 @@ impl Renderer {
             (*self.context.device).clone(),
             cmd_buffer,
             self.swapchain.extent,
+            &mut self.pipeline_manager,
         );
 
         // Transition to render target
@@ -305,67 +345,44 @@ impl Renderer {
             [0.25, 0.1, 0.1, 1.0],
         );
 
-        Some(RenderFrame {
-            renderer: self,
+        let frame = RenderFrame {
             render_ctx,
+            swapchain: self.swapchain.swapchain,
+            swapchain_image: self.swapchain.images[image_index as usize],
+            swapchain_loader: self.swapchain_loader.clone(),
+            graphics_queue: self.graphics_queue,
+            device: (*self.context.device).clone(),
             image_index,
             cmd_buffer,
             wait_semaphore: image_available_sem,
             signal_semaphore: render_finished_sem,
-        })
-    }
-
-    fn end_frame(&mut self, image_index: u32, cmd_buffer: vk::CommandBuffer, wait_semaphore: vk::Semaphore, signal_semaphore: vk::Semaphore) {
-        unsafe {
-            self.context.device.end_command_buffer(cmd_buffer).ok();
-        }
-
-        // Submit with current frame's fence
-        unsafe {
-            let cmd_buffers = [cmd_buffer];
-            let wait_sems = [wait_semaphore];
-            let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-            let signal_sems = [signal_semaphore];
-
-            let fence = self.frame_sync.get_fence(self.current_frame);
-
-            let submit_info = vk::SubmitInfo::default()
-                .command_buffers(&cmd_buffers)
-                .wait_semaphores(&wait_sems)
-                .wait_dst_stage_mask(&wait_stages)
-                .signal_semaphores(&signal_sems);
-
-            self.context.device.queue_submit(self.graphics_queue, &[submit_info], fence).ok();
-
-            let signal_sems_present = [signal_semaphore];
-            let swapchains = [self.swapchain.swapchain];
-            let image_indices = [image_index];
-
-            let present_info = vk::PresentInfoKHR::default()
-                .wait_semaphores(&signal_sems_present)
-                .swapchains(&swapchains)
-                .image_indices(&image_indices);
-
-            let _ = self.swapchain_loader.queue_present(self.graphics_queue, &present_info);
-        }
+            fence: self.frame_sync.get_fence(self.current_frame),
+        };
 
         // Advance to next frame (modulo max_frames_in_flight, not swapchain image count)
         self.current_frame = (self.current_frame + 1) % self.frame_sync.max_frames_in_flight();
+
+        Some(frame)
     }
 }
 
 pub struct RenderFrame<'a> {
-    renderer: &'a mut Renderer,
-    render_ctx: RenderContext,
+    render_ctx: RenderContext<'a>,
+    swapchain: vk::SwapchainKHR,
+    swapchain_image: vk::Image,
+    swapchain_loader: Arc<ash::khr::swapchain::Device>,
+    graphics_queue: vk::Queue,
+    device: Arc<Device>,
     image_index: u32,
     cmd_buffer: vk::CommandBuffer,
     wait_semaphore: vk::Semaphore,
     signal_semaphore: vk::Semaphore,
+    fence: vk::Fence,
 }
 
 impl<'a> RenderFrame<'a> {
-    pub fn render_context(&self) -> &RenderContext {
-        &self.render_ctx
+    pub fn render_context(&mut self) -> &mut RenderContext<'a> {
+        &mut self.render_ctx
     }
 }
 
@@ -379,11 +396,12 @@ impl Drop for Renderer {
             // 1. current_frame (usize - no cleanup)
             // 2. needs_rebuild (bool - no cleanup)
             // 3. graphics_queue (vk::Queue - no cleanup needed, owned by device)
-            // 4. frame_sync (has Drop impl - destroys semaphores and fences)
-            // 5. command_pool (has Drop impl - destroys pool)
-            // 6. swapchain_loader (Arc - no cleanup)
-            // 7. swapchain (has Drop impl - destroys swapchain and image views)
-            // 8. context (Arc - may trigger VulkanContext::drop if last reference)
+            // 4. pipeline_manager (has Drop impl - destroys pipelines)
+            // 5. frame_sync (has Drop impl - destroys semaphores and fences)
+            // 6. command_pool (has Drop impl - destroys pool)
+            // 7. swapchain_loader (Arc - no cleanup)
+            // 8. swapchain (has Drop impl - destroys swapchain and image views)
+            // 9. context (Arc - may trigger VulkanContext::drop if last reference)
         }
     }
 }
@@ -395,13 +413,35 @@ impl<'a> Drop for RenderFrame<'a> {
 
         // Transition to present
         self.render_ctx.transition_image(
-            self.renderer.swapchain.images[self.image_index as usize],
+            self.swapchain_image,
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             vk::ImageLayout::PRESENT_SRC_KHR,
             vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
             vk::PipelineStageFlags::BOTTOM_OF_PIPE,
         );
 
-        self.renderer.end_frame(self.image_index, self.cmd_buffer, self.wait_semaphore, self.signal_semaphore);
+        unsafe {
+            self.device.end_command_buffer(self.cmd_buffer).ok();
+
+            // Submit with fence for GPU-CPU synchronization
+            let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+            let submit_info = vk::SubmitInfo::default()
+                .wait_semaphores(std::slice::from_ref(&self.wait_semaphore))
+                .wait_dst_stage_mask(&wait_stages)
+                .command_buffers(std::slice::from_ref(&self.cmd_buffer))
+                .signal_semaphores(std::slice::from_ref(&self.signal_semaphore));
+
+            self.device.queue_submit(self.graphics_queue, &[submit_info], self.fence).ok();
+
+            // Present
+            let swapchains = [self.swapchain];
+            let image_indices = [self.image_index];
+            let present_info = vk::PresentInfoKHR::default()
+                .wait_semaphores(std::slice::from_ref(&self.signal_semaphore))
+                .swapchains(&swapchains)
+                .image_indices(&image_indices);
+
+            let _ = self.swapchain_loader.queue_present(self.graphics_queue, &present_info);
+        }
     }
 }

@@ -19,7 +19,7 @@ pub struct TriangleRenderer {
 }
 
 impl TriangleRenderer {
-    pub fn new(device: &Arc<ash::Device>) -> Result<Self> {
+    pub fn new(device: &Arc<ash::Device>, instance: &ash::Instance, physical_device: vk::PhysicalDevice) -> Result<Self> {
         // Compile shaders from files
 
         let shader_manager = ShaderManager::new()?;
@@ -165,14 +165,38 @@ impl TriangleRenderer {
 
         let mem_requirements = unsafe { device.get_buffer_memory_requirements(vertex_buffer) };
 
+        // Find suitable memory type
+        let mem_type_index = find_memory_type(
+            instance,
+            physical_device,
+            &mem_requirements,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        )?;
+
         let alloc_info = vk::MemoryAllocateInfo::default()
             .allocation_size(mem_requirements.size)
-            .memory_type_index(0); // TODO: Proper memory type selection
+            .memory_type_index(mem_type_index);
 
         let vertex_buffer_memory = unsafe { device.allocate_memory(&alloc_info, None)? };
 
         unsafe {
             device.bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)?;
+        }
+
+        // Copy vertex data to buffer
+        unsafe {
+            let data_ptr = device.map_memory(
+                vertex_buffer_memory,
+                0,
+                mem_requirements.size,
+                vk::MemoryMapFlags::empty(),
+            )?;
+            std::ptr::copy_nonoverlapping(
+                vertices.as_ptr() as *const u8,
+                data_ptr as *mut u8,
+                std::mem::size_of_val(&vertices),
+            );
+            device.unmap_memory(vertex_buffer_memory);
         }
 
         Ok(TriangleRenderer {
@@ -194,4 +218,32 @@ impl TriangleRenderer {
             device.cmd_draw(cmd_buffer, 3, 1, 0, 0);
         }
     }
+
+    pub fn cleanup(&self, device: &Arc<ash::Device>) {
+        unsafe {
+            device.destroy_buffer(self.vertex_buffer, None);
+            device.free_memory(self.vertex_buffer_memory, None);
+            device.destroy_pipeline(self.pipeline, None);
+            device.destroy_pipeline_layout(self.pipeline_layout, None);
+        }
+    }
+}
+
+fn find_memory_type(
+    instance: &ash::Instance,
+    physical_device: vk::PhysicalDevice,
+    mem_requirements: &vk::MemoryRequirements,
+    properties: vk::MemoryPropertyFlags,
+) -> Result<u32> {
+    let mem_props = unsafe { instance.get_physical_device_memory_properties(physical_device) };
+    
+    for i in 0..mem_props.memory_type_count {
+        if (mem_requirements.memory_type_bits & (1 << i)) != 0
+            && (mem_props.memory_types[i as usize].property_flags & properties) == properties
+        {
+            return Ok(i);
+        }
+    }
+    
+    anyhow::bail!("No suitable memory type found")
 }

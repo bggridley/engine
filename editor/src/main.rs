@@ -56,7 +56,7 @@ fn main() -> Result<()> {
     };
     
     // Create triangle renderer
-    let triangle_renderer = TriangleRenderer::new(&context.device)?;
+    let triangle_renderer = TriangleRenderer::new(&context.device, &context.instance, context.graphics_devices[0].0)?;
 
     println!("Vulkan Engine initialized!");
     println!("Window: {:?}", window.id());

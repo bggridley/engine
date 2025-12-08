@@ -199,7 +199,7 @@ impl TriangleRenderer {
         }
 
         Ok(TriangleRenderer {
-            device: context.device.clone(),
+            device: (*context.device).clone(),
             pipeline,
             pipeline_layout,
             vertex_buffer,

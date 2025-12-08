@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::ffi::CStr;
-use std::{os::raw::c_char, sync::Arc};
+use std::{mem::ManuallyDrop, os::raw::c_char, sync::Arc};
 use winit::{
     raw_window_handle::{HasDisplayHandle, RawDisplayHandle},
     raw_window_handle::{HasWindowHandle, RawWindowHandle},
@@ -21,7 +21,7 @@ pub struct VulkanContext {
     pub surface_loader: ash::khr::surface::Instance,
     pub raw_display_handle: RawDisplayHandle,
     pub raw_window_handle: RawWindowHandle,
-    pub device: std::sync::Arc<ash::Device>,
+    pub device: ManuallyDrop<Arc<ash::Device>>,
     pub surface: ash::vk::SurfaceKHR,
     pub queue_family_indices: Vec<u32>,
 }
@@ -247,7 +247,7 @@ impl VulkanContext {
                 surface_loader,
                 raw_display_handle,
                 raw_window_handle,
-                device: device_arc,
+                device: ManuallyDrop::new(device_arc),
                 surface,
                 queue_family_indices: unique_families.iter().copied().collect(),
             })
@@ -306,17 +306,29 @@ impl VulkanContext {
 impl Drop for VulkanContext {
     fn drop(&mut self) {
         unsafe {
-            // Wait for device to finish all work before destroying it
+            // Wait for device to finish all work before destroying anything
             let _ = self.device.device_wait_idle();
             
-            // Destroy device - need to get it from Arc
-            // Since we own self, we can use ptr::read to extract the Arc
-            if Arc::strong_count(&self.device) == 1 {
-                // We're the last owner, safe to destroy
-                let device = std::ptr::read(&self.device);
-                drop(device); // Drops the Arc, destroying the device
-                self.instance.destroy_instance(None);
+            // Destroy surface before instance
+            self.surface_loader.destroy_surface(self.surface, None);
+            
+            // Take ownership of the device Arc from ManuallyDrop
+            let device_arc = ManuallyDrop::take(&mut self.device);
+            
+            // Try to unwrap the Arc - should succeed if this is the last reference
+            match Arc::try_unwrap(device_arc) {
+                Ok(device) => {
+                    // We're the last owner - destroy the device
+                    device.destroy_device(None);
+                }
+                Err(_arc) => {
+                    // Someone else still has a reference - this shouldn't happen
+                    eprintln!("Warning: VulkanContext dropped but device still has references");
+                }
             }
+            
+            // Destroy instance last
+            self.instance.destroy_instance(None);
         }
     }
 }

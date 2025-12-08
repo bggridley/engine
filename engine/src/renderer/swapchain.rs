@@ -1,5 +1,5 @@
 use ash::{vk, Device};
-use std::sync::Arc;
+use std::{mem::ManuallyDrop, sync::Arc};
 
 pub struct Swapchain {
 	pub swapchain: vk::SwapchainKHR,
@@ -65,6 +65,9 @@ impl Swapchain {
 			old_swapchain,
 		);
 
+		// Wrap in ManuallyDrop to prevent Drop from destroying the handles we're about to move
+		let mut new_swapchain = ManuallyDrop::new(new_swapchain);
+		
 		// Update to new swapchain data BEFORE destroying old resources
 		self.swapchain = new_swapchain.swapchain;
 		self.images = new_swapchain.images.clone();
@@ -72,8 +75,12 @@ impl Swapchain {
 		self.format = new_swapchain.format;
 		self.extent = new_swapchain.extent;
 
-		// Prevent new_swapchain's drop from destroying what we just moved
-		std::mem::forget(new_swapchain);
+		// Manually drop the device Arc to release our extra reference
+		// SAFETY: We're only dropping the Arc, not the Vulkan handles
+		unsafe {
+			std::ptr::drop_in_place(&mut new_swapchain.device);
+			std::ptr::drop_in_place(&mut new_swapchain.swapchain_loader);
+		}
 
 		// NOW destroy old resources after ensuring device is idle again
 		unsafe {
@@ -96,6 +103,8 @@ impl Swapchain {
 		queue_family_indices: &[u32],
 		old_swapchain: vk::SwapchainKHR,
 	) -> Swapchain {
+		println!("Creating swapchain with format: {:?}, extent: {}x{}", surface_format.format, extent.width, extent.height);
+		
 		let swapchain_create_info = vk::SwapchainCreateInfoKHR {
 			surface,
 			min_image_count,

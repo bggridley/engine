@@ -219,7 +219,9 @@ impl Renderer {
     }
 
     pub fn handle_resize(&mut self, width: u32, height: u32) {
-        if width > 0 && height > 0 {
+        // Only recreate if size actually changed
+        if width > 0 && height > 0 && (width != self.swapchain.extent.width || height != self.swapchain.extent.height) {
+            println!("Resizing swapchain: {}x{} -> {}x{}", self.swapchain.extent.width, self.swapchain.extent.height, width, height);
             self.swapchain.recreate(vk::Extent2D { width, height });
         }
     }
@@ -283,7 +285,7 @@ impl Renderer {
         }
 
         let render_ctx = RenderContext::new(
-            self.context.device.clone(),
+            (*self.context.device).clone(),
             cmd_buffer,
             self.swapchain.extent,
         );
@@ -364,6 +366,25 @@ pub struct RenderFrame<'a> {
 impl<'a> RenderFrame<'a> {
     pub fn render_context(&self) -> &RenderContext {
         &self.render_ctx
+    }
+}
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        unsafe {
+            // Wait for all GPU work to complete
+            let _ = self.context.device.device_wait_idle();
+            
+            // Fields will be dropped in reverse order of declaration:
+            // 1. current_frame (usize - no cleanup)
+            // 2. needs_rebuild (bool - no cleanup)
+            // 3. graphics_queue (vk::Queue - no cleanup needed, owned by device)
+            // 4. frame_sync (has Drop impl - destroys semaphores and fences)
+            // 5. command_pool (has Drop impl - destroys pool)
+            // 6. swapchain_loader (Arc - no cleanup)
+            // 7. swapchain (has Drop impl - destroys swapchain and image views)
+            // 8. context (Arc - may trigger VulkanContext::drop if last reference)
+        }
     }
 }
 

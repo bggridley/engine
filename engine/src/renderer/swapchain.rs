@@ -9,6 +9,11 @@ pub struct Swapchain {
 	pub extent: vk::Extent2D,
 	device: Arc<Device>,
 	swapchain_loader: Arc<ash::khr::swapchain::Device>,
+	surface: vk::SurfaceKHR,
+	surface_format: vk::SurfaceFormatKHR,
+	present_mode: vk::PresentModeKHR,
+	min_image_count: u32,
+	queue_family_indices: Vec<u32>,
 }
 
 impl Swapchain {
@@ -21,6 +26,76 @@ impl Swapchain {
 		present_mode: vk::PresentModeKHR,
 		min_image_count: u32,
 		queue_family_indices: &[u32],
+	) -> Swapchain {
+		Self::create_swapchain_internal(
+			device,
+			swapchain_loader,
+			surface_format,
+			extent,
+			surface,
+			present_mode,
+			min_image_count,
+			queue_family_indices,
+			vk::SwapchainKHR::null(),
+		)
+	}
+
+	pub fn recreate(
+		&mut self,
+		extent: vk::Extent2D,
+	) {
+		unsafe {
+			let _ = self.device.device_wait_idle();
+		}
+
+		let old_swapchain = self.swapchain;
+
+		// Create new swapchain referencing the old one
+		let new_swapchain = Self::create_swapchain_internal(
+			&self.device,
+			&self.swapchain_loader,
+			self.surface_format,
+			extent,
+			self.surface,
+			self.present_mode,
+			self.min_image_count,
+			&self.queue_family_indices,
+			old_swapchain,
+		);
+
+		// Destroy old image views
+		unsafe {
+			for &image_view in &self.image_views {
+				self.device.destroy_image_view(image_view, None);
+			}
+		}
+
+		// Update to new swapchain data
+		self.swapchain = new_swapchain.swapchain;
+		self.images = new_swapchain.images.clone();
+		self.image_views = new_swapchain.image_views.clone();
+		self.format = new_swapchain.format;
+		self.extent = new_swapchain.extent;
+
+		// Destroy old swapchain
+		unsafe {
+			self.swapchain_loader.destroy_swapchain(old_swapchain, None);
+		}
+
+		// Prevent new_swapchain's drop from destroying what we just moved
+		std::mem::forget(new_swapchain);
+	}
+
+	fn create_swapchain_internal(
+		device: &Arc<Device>,
+		swapchain_loader: &ash::khr::swapchain::Device,
+		surface_format: vk::SurfaceFormatKHR,
+		extent: vk::Extent2D,
+		surface: vk::SurfaceKHR,
+		present_mode: vk::PresentModeKHR,
+		min_image_count: u32,
+		queue_family_indices: &[u32],
+		old_swapchain: vk::SwapchainKHR,
 	) -> Swapchain {
 		let swapchain_create_info = vk::SwapchainCreateInfoKHR {
 			surface,
@@ -41,7 +116,7 @@ impl Swapchain {
 			composite_alpha: vk::CompositeAlphaFlagsKHR::OPAQUE,
 			present_mode,
 			clipped: vk::TRUE,
-			old_swapchain: vk::SwapchainKHR::null(),
+			old_swapchain,
 			..Default::default()
 		};
 
@@ -95,6 +170,11 @@ impl Swapchain {
 			extent,
 			device: device.clone(),
 			swapchain_loader: Arc::new(swapchain_loader.clone()),
+			surface,
+			surface_format,
+			present_mode,
+			min_image_count,
+			queue_family_indices: queue_family_indices.to_vec(),
 		}
 	}
 }

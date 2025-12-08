@@ -1,14 +1,12 @@
 REPO=$(git rev-parse --show-toplevel)
 TARGET="x86_64-pc-windows-gnu"
 
-. "$HOME/.cargo/env"
-
 export RUSTFLAGS="-L $HOME/winlibs/vulkan"
 
 build() {
     OUTPUT_PATH=/mnt/c/Users/bggri/engine
     cargo build --release --target $TARGET
-
+    
     mkdir -p $OUTPUT_PATH
     cp $REPO/target/$TARGET/release/editor.exe $OUTPUT_PATH/editor.exe
     cp -r $REPO/engine/shaders $OUTPUT_PATH/shaders

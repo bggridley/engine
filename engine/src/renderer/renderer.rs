@@ -157,19 +157,38 @@ pub struct Renderer {
     frame_sync: FrameSynchronizer,
     graphics_queue: vk::Queue,
     needs_rebuild: bool,
+    current_frame: usize,
 }
 
 impl Renderer {
     pub fn new(context: Arc<VulkanContext>, width: u32, height: u32) -> Result<Self> {
         let swapchain_loader = Arc::new(ash::khr::swapchain::Device::new(&context.instance, &context.device));
         
+        // Query supported surface formats
+        let surface_formats = unsafe {
+            context.surface_loader.get_physical_device_surface_formats(
+                context.physical_device,
+                context.surface,
+            )?
+        };
+
+        // Find SRGB format or fall back to first available
+        let surface_format = surface_formats
+            .iter()
+            .find(|fmt| fmt.format == vk::Format::B8G8R8A8_SRGB)
+            .or_else(|| surface_formats.first())
+            .copied()
+            .unwrap_or(vk::SurfaceFormatKHR {
+                format: vk::Format::B8G8R8A8_SRGB,
+                color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
+            });
+
+        println!("Selected surface format: {:?}", surface_format);
+        
         let swapchain = Swapchain::new(
             &context.device,
             &swapchain_loader,
-            vk::SurfaceFormatKHR {
-                format: vk::Format::B8G8R8A8_SRGB,
-                color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
-            },
+            surface_format,
             vk::Extent2D { width, height },
             context.surface,
             vk::PresentModeKHR::FIFO,
@@ -177,8 +196,11 @@ impl Renderer {
             &context.queue_family_indices,
         );
 
-        let command_pool = CommandPool::new(&context.device, context.queue_family_indices[0], 2);
-        let frame_sync = FrameSynchronizer::new(&context.device, 2);
+        // Use frames-in-flight pattern (2 = double buffering)
+        let max_frames_in_flight = 2;
+        let swapchain_image_count = swapchain.images.len();
+        let command_pool = CommandPool::new(&context.device, context.queue_family_indices[0], max_frames_in_flight as u32);
+        let frame_sync = FrameSynchronizer::new(&context.device, max_frames_in_flight, swapchain_image_count);
         
         let graphics_queue = unsafe {
             context.device.get_device_queue(context.queue_family_indices[0], 0)
@@ -192,6 +214,7 @@ impl Renderer {
             frame_sync,
             graphics_queue,
             needs_rebuild: false,
+            current_frame: 0,
         })
     }
 
@@ -208,13 +231,18 @@ impl Renderer {
             return None;
         }
 
-        self.frame_sync.begin_frame().ok()?;
+        // Wait for this frame's fence to be signaled (CPU-GPU sync)
+        self.frame_sync.wait_for_frame(self.current_frame).ok()?;
 
+        // Get acquire semaphore for this frame
+        let image_available_sem = self.frame_sync.get_acquire_semaphore(self.current_frame);
+        
+        // Acquire next image
         let image_index = match unsafe {
             self.swapchain_loader.acquire_next_image(
                 self.swapchain.swapchain,
                 u64::MAX,
-                self.frame_sync.current_image_available_semaphore(),
+                image_available_sem,
                 vk::Fence::null(),
             )
         } {
@@ -224,12 +252,27 @@ impl Renderer {
                 return None;
             }
             Err(_) => {
-                self.frame_sync.end_frame();
                 return None;
             }
         };
 
-        let cmd_buffer = self.command_pool.buffers[self.frame_sync.current_frame_index()];
+        // Get the render finished semaphore for THIS SPECIFIC IMAGE
+        let render_finished_sem = self.frame_sync.get_render_finished_semaphore(image_index);
+
+        // Check if this image is still being used by a previous frame
+        if let Some(image_fence) = self.frame_sync.images_in_flight[image_index as usize] {
+            unsafe {
+                self.context.device.wait_for_fences(&[image_fence], true, u64::MAX).ok()?;
+            }
+        }
+        
+        // Mark this image as in use by this frame
+        self.frame_sync.images_in_flight[image_index as usize] = Some(self.frame_sync.get_fence(self.current_frame));
+
+        // Reset fence for this frame
+        self.frame_sync.reset_fence(self.current_frame).ok()?;
+
+        let cmd_buffer = self.command_pool.buffers[self.current_frame];
 
         // Reset and begin command buffer
         unsafe {
@@ -265,20 +308,24 @@ impl Renderer {
             render_ctx,
             image_index,
             cmd_buffer,
+            wait_semaphore: image_available_sem,
+            signal_semaphore: render_finished_sem,
         })
     }
 
-    fn end_frame(&mut self, image_index: u32, cmd_buffer: vk::CommandBuffer) {
+    fn end_frame(&mut self, image_index: u32, cmd_buffer: vk::CommandBuffer, wait_semaphore: vk::Semaphore, signal_semaphore: vk::Semaphore) {
         unsafe {
             self.context.device.end_command_buffer(cmd_buffer).ok();
         }
 
-        // Submit and present
+        // Submit with current frame's fence
         unsafe {
             let cmd_buffers = [cmd_buffer];
-            let wait_sems = [self.frame_sync.current_image_available_semaphore()];
+            let wait_sems = [wait_semaphore];
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-            let signal_sems = [self.frame_sync.current_render_finished_semaphore()];
+            let signal_sems = [signal_semaphore];
+
+            let fence = self.frame_sync.get_fence(self.current_frame);
 
             let submit_info = vk::SubmitInfo::default()
                 .command_buffers(&cmd_buffers)
@@ -286,9 +333,9 @@ impl Renderer {
                 .wait_dst_stage_mask(&wait_stages)
                 .signal_semaphores(&signal_sems);
 
-            self.context.device.queue_submit(self.graphics_queue, &[submit_info], self.frame_sync.current_in_flight_fence()).ok();
+            self.context.device.queue_submit(self.graphics_queue, &[submit_info], fence).ok();
 
-            let signal_sems_present = [self.frame_sync.current_render_finished_semaphore()];
+            let signal_sems_present = [signal_semaphore];
             let swapchains = [self.swapchain.swapchain];
             let image_indices = [image_index];
 
@@ -300,7 +347,8 @@ impl Renderer {
             let _ = self.swapchain_loader.queue_present(self.graphics_queue, &present_info);
         }
 
-        self.frame_sync.end_frame();
+        // Advance to next frame (modulo max_frames_in_flight, not swapchain image count)
+        self.current_frame = (self.current_frame + 1) % self.frame_sync.max_frames_in_flight();
     }
 }
 
@@ -309,6 +357,8 @@ pub struct RenderFrame<'a> {
     render_ctx: RenderContext,
     image_index: u32,
     cmd_buffer: vk::CommandBuffer,
+    wait_semaphore: vk::Semaphore,
+    signal_semaphore: vk::Semaphore,
 }
 
 impl<'a> RenderFrame<'a> {
@@ -331,6 +381,6 @@ impl<'a> Drop for RenderFrame<'a> {
             vk::PipelineStageFlags::BOTTOM_OF_PIPE,
         );
 
-        self.renderer.end_frame(self.image_index, self.cmd_buffer);
+        self.renderer.end_frame(self.image_index, self.cmd_buffer, self.wait_semaphore, self.signal_semaphore);
     }
 }

@@ -44,11 +44,13 @@ impl Swapchain {
 		&mut self,
 		extent: vk::Extent2D,
 	) {
+		// Wait for device to be idle before any recreation
 		unsafe {
 			let _ = self.device.device_wait_idle();
 		}
 
 		let old_swapchain = self.swapchain;
+		let old_image_views = std::mem::take(&mut self.image_views);
 
 		// Create new swapchain referencing the old one
 		let new_swapchain = Self::create_swapchain_internal(
@@ -63,27 +65,24 @@ impl Swapchain {
 			old_swapchain,
 		);
 
-		// Destroy old image views
-		unsafe {
-			for &image_view in &self.image_views {
-				self.device.destroy_image_view(image_view, None);
-			}
-		}
-
-		// Update to new swapchain data
+		// Update to new swapchain data BEFORE destroying old resources
 		self.swapchain = new_swapchain.swapchain;
 		self.images = new_swapchain.images.clone();
 		self.image_views = new_swapchain.image_views.clone();
 		self.format = new_swapchain.format;
 		self.extent = new_swapchain.extent;
 
-		// Destroy old swapchain
-		unsafe {
-			self.swapchain_loader.destroy_swapchain(old_swapchain, None);
-		}
-
 		// Prevent new_swapchain's drop from destroying what we just moved
 		std::mem::forget(new_swapchain);
+
+		// NOW destroy old resources after ensuring device is idle again
+		unsafe {
+			let _ = self.device.device_wait_idle();
+			for &image_view in &old_image_views {
+				self.device.destroy_image_view(image_view, None);
+			}
+			self.swapchain_loader.destroy_swapchain(old_swapchain, None);
+		}
 	}
 
 	fn create_swapchain_internal(

@@ -306,6 +306,9 @@ impl VulkanContext {
 impl Drop for VulkanContext {
     fn drop(&mut self) {
         unsafe {
+            // Wait for device to finish all work before destroying it
+            let _ = self.device.device_wait_idle();
+            
             // Destroy device - need to get it from Arc
             // Since we own self, we can use ptr::read to extract the Arc
             if Arc::strong_count(&self.device) == 1 {

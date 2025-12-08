@@ -71,17 +71,14 @@ fn main() -> Result<()> {
                     window_target.exit();
                 }
                 WindowEvent::RedrawRequested => {
-                    // Get frame synchronization primitives
-                    let frame_index = frame_sync.current_frame;
-                    let image_available = frame_sync.image_available_semaphores[frame_index];
-                    let render_finished = frame_sync.render_finished_semaphores[frame_index];
-                    let in_flight_fence = frame_sync.in_flight_fences[frame_index];
+                    // Wait for previous frame and begin new frame
+                    frame_sync.begin_frame().ok();
                     
-                    // Wait for previous frame
-                    unsafe {
-                        context.device.wait_for_fences(&[in_flight_fence], true, u64::MAX).ok();
-                        context.device.reset_fences(&[in_flight_fence]).ok();
-                    }
+                    // Get frame synchronization primitives
+                    let frame_index = frame_sync.current_frame_index();
+                    let image_available = frame_sync.current_image_available_semaphore();
+                    let render_finished = frame_sync.current_render_finished_semaphore();
+                    let in_flight_fence = frame_sync.current_in_flight_fence();
                     
                     // Acquire swapchain image
                     let (image_index, _) = match unsafe {
@@ -226,7 +223,7 @@ fn main() -> Result<()> {
                         let _ = swapchain_loader.queue_present(graphics_queue, &present_info);
                     }
                     
-                    frame_sync.current_frame = (frame_sync.current_frame + 1) % frame_sync.max_frames_in_flight;
+                    frame_sync.end_frame();
                     frame_count += 1;
                     
                     if frame_count % 60 == 0 {

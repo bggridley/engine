@@ -102,6 +102,7 @@ impl Swapchain {
 impl Drop for Swapchain {
 	fn drop(&mut self) {
 		unsafe {
+			let _ = self.device.device_wait_idle();
 			for &image_view in &self.image_views {
 				self.device.destroy_image_view(image_view, None);
 			}

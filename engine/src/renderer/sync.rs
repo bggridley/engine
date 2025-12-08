@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 /// Manages frame synchronization with semaphores and fences
 pub struct FrameSynchronizer {
+    device: Arc<Device>,
     pub image_available_semaphores: Vec<vk::Semaphore>,
     pub render_finished_semaphores: Vec<vk::Semaphore>,
     pub in_flight_fences: Vec<vk::Fence>,
@@ -44,6 +45,7 @@ impl FrameSynchronizer {
         }
 
         FrameSynchronizer {
+            device: device.clone(),
             image_available_semaphores,
             render_finished_semaphores,
             in_flight_fences,
@@ -72,15 +74,24 @@ impl FrameSynchronizer {
         self.in_flight_fences[self.current_frame]
     }
 
+    /// Wait for the current frame's fence to be signaled and reset it
+    pub fn begin_frame(&mut self) -> Result<(), vk::Result> {
+        unsafe {
+            self.device.wait_for_fences(&[self.current_in_flight_fence()], true, u64::MAX)?;
+            self.device.reset_fences(&[self.current_in_flight_fence()])?;
+        }
+        Ok(())
+    }
+
     /// Advance to the next frame
-    pub fn advance_frame(&mut self) {
+    pub fn end_frame(&mut self) {
         self.current_frame = (self.current_frame + 1) % self.max_frames_in_flight;
     }
 
     /// Wait for the current frame's fence to be signaled
-    pub fn wait_for_fence(&self, device: &Arc<Device>) -> Result<(), vk::Result> {
+    pub fn wait_for_fence(&self) -> Result<(), vk::Result> {
         unsafe {
-            device.wait_for_fences(
+            self.device.wait_for_fences(
                 &[self.current_in_flight_fence()],
                 true,
                 u64::MAX,
@@ -89,16 +100,28 @@ impl FrameSynchronizer {
     }
 
     /// Reset the current frame's fence
-    pub fn reset_fence(&self, device: &Arc<Device>) -> Result<(), vk::Result> {
+    pub fn reset_fence(&self) -> Result<(), vk::Result> {
         unsafe {
-            device.reset_fences(&[self.current_in_flight_fence()])
+            self.device.reset_fences(&[self.current_in_flight_fence()])
         }
     }
 }
 
 impl Drop for FrameSynchronizer {
     fn drop(&mut self) {
-        // Note: Device must still be valid when this is called.
-        // In a real application, you'd want to ensure the device waits idle before dropping.
+        unsafe {
+            // Wait for all GPU work to complete before destroying synchronization objects
+            let _ = self.device.device_wait_idle();
+            
+            for &semaphore in &self.image_available_semaphores {
+                self.device.destroy_semaphore(semaphore, None);
+            }
+            for &semaphore in &self.render_finished_semaphores {
+                self.device.destroy_semaphore(semaphore, None);
+            }
+            for &fence in &self.in_flight_fences {
+                self.device.destroy_fence(fence, None);
+            }
+        }
     }
 }

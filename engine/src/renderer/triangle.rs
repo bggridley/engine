@@ -12,6 +12,7 @@ pub struct Vertex {
 }
 
 pub struct TriangleRenderer {
+    device: Arc<ash::Device>,
     pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
     pub vertex_buffer: vk::Buffer,
@@ -200,6 +201,7 @@ impl TriangleRenderer {
         }
 
         Ok(TriangleRenderer {
+            device: device.clone(),
             pipeline,
             pipeline_layout,
             vertex_buffer,
@@ -218,13 +220,16 @@ impl TriangleRenderer {
             device.cmd_draw(cmd_buffer, 3, 1, 0, 0);
         }
     }
+}
 
-    pub fn cleanup(&self, device: &Arc<ash::Device>) {
+impl Drop for TriangleRenderer {
+    fn drop(&mut self) {
         unsafe {
-            device.destroy_buffer(self.vertex_buffer, None);
-            device.free_memory(self.vertex_buffer_memory, None);
-            device.destroy_pipeline(self.pipeline, None);
-            device.destroy_pipeline_layout(self.pipeline_layout, None);
+            let _ = self.device.device_wait_idle();
+            self.device.destroy_buffer(self.vertex_buffer, None);
+            self.device.free_memory(self.vertex_buffer_memory, None);
+            self.device.destroy_pipeline(self.pipeline, None);
+            self.device.destroy_pipeline_layout(self.pipeline_layout, None);
         }
     }
 }

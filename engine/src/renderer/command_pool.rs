@@ -2,8 +2,9 @@ use ash::{vk, Device};
 use std::sync::Arc;
 
 pub struct CommandPool {
-    pub pool: vk::CommandPool,
+    pool: vk::CommandPool,
     pub buffers: Vec<vk::CommandBuffer>,
+    device: Arc<Device>,
 }
 
 impl CommandPool {
@@ -39,7 +40,11 @@ impl CommandPool {
                 .expect("Failed to allocate command buffers!")
         };
 
-        CommandPool { pool, buffers }
+        CommandPool { 
+            pool, 
+            buffers,
+            device: device.clone(),
+        }
     }
 
     pub fn allocate_buffers(
@@ -96,7 +101,10 @@ impl CommandPool {
 
 impl Drop for CommandPool {
     fn drop(&mut self) {
-        // Note: Device must still be valid when this is called.
-        // In a real application, you'd want to ensure the device waits idle before dropping.
+        unsafe {
+            // Wait for all GPU work to complete before destroying the command pool
+            let _ = self.device.device_wait_idle();
+            self.device.destroy_command_pool(self.pool, None);
+        }
     }
 }

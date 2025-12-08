@@ -7,6 +7,8 @@ pub struct Swapchain {
 	pub image_views: Vec<vk::ImageView>,
 	pub format: vk::Format,
 	pub extent: vk::Extent2D,
+	device: Arc<Device>,
+	swapchain_loader: Arc<ash::khr::swapchain::Device>,
 }
 
 impl Swapchain {
@@ -91,6 +93,19 @@ impl Swapchain {
 			image_views,
 			format: surface_format.format,
 			extent,
+			device: device.clone(),
+			swapchain_loader: Arc::new(swapchain_loader.clone()),
+		}
+	}
+}
+
+impl Drop for Swapchain {
+	fn drop(&mut self) {
+		unsafe {
+			for &image_view in &self.image_views {
+				self.device.destroy_image_view(image_view, None);
+			}
+			self.swapchain_loader.destroy_swapchain(self.swapchain, None);
 		}
 	}
 }

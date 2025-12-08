@@ -306,7 +306,14 @@ impl VulkanContext {
 impl Drop for VulkanContext {
     fn drop(&mut self) {
         unsafe {
-            self.instance.destroy_instance(None);
+            // Destroy device - need to get it from Arc
+            // Since we own self, we can use ptr::read to extract the Arc
+            if Arc::strong_count(&self.device) == 1 {
+                // We're the last owner, safe to destroy
+                let device = std::ptr::read(&self.device);
+                drop(device); // Drops the Arc, destroying the device
+                self.instance.destroy_instance(None);
+            }
         }
     }
 }

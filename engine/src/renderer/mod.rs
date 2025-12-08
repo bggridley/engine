@@ -18,3 +18,6 @@ pub use triangle::{TriangleRenderer, Vertex};
 
 pub mod shader_manager;
 pub use shader_manager::{ShaderManager, ShaderId};
+
+pub mod render_context;
+pub use render_context::{RenderContext, Renderable};

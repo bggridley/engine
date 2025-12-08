@@ -2,8 +2,7 @@ use anyhow::Result;
 use ash::vk;
 use std::sync::Arc;
 
-use crate::renderer::ShaderManager;
-use crate::renderer::ShaderId;
+use crate::renderer::{ShaderManager, ShaderId};
 
 #[repr(C)]
 pub struct Vertex {
@@ -20,9 +19,8 @@ pub struct TriangleRenderer {
 }
 
 impl TriangleRenderer {
-    pub fn new(device: &Arc<ash::Device>, instance: &ash::Instance, physical_device: vk::PhysicalDevice) -> Result<Self> {
+    pub fn new(context: &Arc<crate::renderer::VulkanContext>) -> Result<Self> {
         // Compile shaders from files
-
         let shader_manager = ShaderManager::new()?;
         shader_manager.compile_all_shaders()?;
 
@@ -31,14 +29,14 @@ impl TriangleRenderer {
 
         // Create shader modules
         let vert_module = unsafe {
-            device.create_shader_module(
+            context.device.create_shader_module(
                 &vk::ShaderModuleCreateInfo::default().code(&vert_shader_code),
                 None,
             )?
         };
 
         let frag_module = unsafe {
-            device.create_shader_module(
+            context.device.create_shader_module(
                 &vk::ShaderModuleCreateInfo::default().code(&frag_shader_code),
                 None,
             )?
@@ -46,7 +44,7 @@ impl TriangleRenderer {
 
         // Create pipeline layout
         let pipeline_layout = unsafe {
-            device.create_pipeline_layout(
+            context.device.create_pipeline_layout(
                 &vk::PipelineLayoutCreateInfo::default(),
                 None,
             )?
@@ -131,14 +129,14 @@ impl TriangleRenderer {
             .push_next(&mut rendering_info);
 
         let pipeline = unsafe {
-            device.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
+            context.device.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
                 .expect("Failed to create graphics pipeline")[0]
         };
 
         // Destroy shader modules
         unsafe {
-            device.destroy_shader_module(vert_module, None);
-            device.destroy_shader_module(frag_module, None);
+            context.device.destroy_shader_module(vert_module, None);
+            context.device.destroy_shader_module(frag_module, None);
         }
 
         // Create vertex buffer with triangle data
@@ -162,14 +160,14 @@ impl TriangleRenderer {
             .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
 
-        let vertex_buffer = unsafe { device.create_buffer(&buffer_info, None)? };
+        let vertex_buffer = unsafe { context.device.create_buffer(&buffer_info, None)? };
 
-        let mem_requirements = unsafe { device.get_buffer_memory_requirements(vertex_buffer) };
+        let mem_requirements = unsafe { context.device.get_buffer_memory_requirements(vertex_buffer) };
 
         // Find suitable memory type
         let mem_type_index = find_memory_type(
-            instance,
-            physical_device,
+            &context.instance,
+            context.physical_device,
             &mem_requirements,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
@@ -178,15 +176,15 @@ impl TriangleRenderer {
             .allocation_size(mem_requirements.size)
             .memory_type_index(mem_type_index);
 
-        let vertex_buffer_memory = unsafe { device.allocate_memory(&alloc_info, None)? };
+        let vertex_buffer_memory = unsafe { context.device.allocate_memory(&alloc_info, None)? };
 
         unsafe {
-            device.bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)?;
+            context.device.bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)?;
         }
 
         // Copy vertex data to buffer
         unsafe {
-            let data_ptr = device.map_memory(
+            let data_ptr = context.device.map_memory(
                 vertex_buffer_memory,
                 0,
                 mem_requirements.size,
@@ -197,11 +195,11 @@ impl TriangleRenderer {
                 data_ptr as *mut u8,
                 std::mem::size_of_val(&vertices),
             );
-            device.unmap_memory(vertex_buffer_memory);
+            context.device.unmap_memory(vertex_buffer_memory);
         }
 
         Ok(TriangleRenderer {
-            device: device.clone(),
+            device: context.device.clone(),
             pipeline,
             pipeline_layout,
             vertex_buffer,
@@ -219,6 +217,14 @@ impl TriangleRenderer {
             device.cmd_bind_vertex_buffers(cmd_buffer, 0, &[self.vertex_buffer], &[0]);
             device.cmd_draw(cmd_buffer, 3, 1, 0, 0);
         }
+    }
+
+    /// Render using a RenderContext for higher-level API
+    pub fn render_to_context(&self, ctx: &crate::renderer::RenderContext) -> Result<()> {
+        ctx.bind_pipeline(self.pipeline);
+        ctx.bind_vertex_buffer(self.vertex_buffer);
+        ctx.draw(3, 1, 0, 0);
+        Ok(())
     }
 }
 

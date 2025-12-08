@@ -17,7 +17,7 @@ use ash::{
 pub struct VulkanContext {
     pub entry: Entry,
     pub instance: Instance,
-    pub graphics_devices: Vec<(vk::PhysicalDevice, Vec<u32>)>,
+    pub physical_device: vk::PhysicalDevice,
     pub surface_loader: ash::khr::surface::Instance,
     pub raw_display_handle: RawDisplayHandle,
     pub raw_window_handle: RawWindowHandle,
@@ -243,7 +243,7 @@ impl VulkanContext {
             Ok(Self {
                 entry,
                 instance,
-                graphics_devices,
+                physical_device: *physical_device,
                 surface_loader,
                 raw_display_handle,
                 raw_window_handle,

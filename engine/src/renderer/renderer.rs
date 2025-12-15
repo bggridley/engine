@@ -4,20 +4,18 @@ use ash::{vk, Device};
 use std::sync::Arc;
 
 /// High-level rendering context for command recording
-pub struct RenderContext<'a> {
+pub struct RenderContext {
     device: Arc<Device>,
     cmd_buffer: vk::CommandBuffer,
     extent: vk::Extent2D,
-    pipeline_manager: &'a mut PipelineManager,
 }
 
-impl<'a> RenderContext<'a> {
-    fn new(device: Arc<Device>, cmd_buffer: vk::CommandBuffer, extent: vk::Extent2D, pipeline_manager: &'a mut PipelineManager) -> Self {
+impl RenderContext {
+    fn new(device: Arc<Device>, cmd_buffer: vk::CommandBuffer, extent: vk::Extent2D) -> Self {
         RenderContext {
             device,
             cmd_buffer,
             extent,
-            pipeline_manager,
         }
     }
 
@@ -114,13 +112,6 @@ impl<'a> RenderContext<'a> {
         }
     }
 
-    /// Bind pipeline by ID (uses pipeline manager)
-    pub fn bind_pipeline_id(&mut self, id: crate::renderer::PipelineId) -> Result<()> {
-        let pipeline = self.pipeline_manager.get(id)?;
-        self.bind_pipeline(pipeline);
-        Ok(())
-    }
-
     /// Bind pipeline directly
     pub fn bind_pipeline(&self, pipeline: vk::Pipeline) {
         unsafe {
@@ -176,7 +167,7 @@ impl<'a> RenderContext<'a> {
 
 /// Trait for anything that can be rendered
 pub trait Renderable {
-    fn render(&self, ctx: &mut RenderContext) -> Result<()>;
+    fn render(&self, ctx: &RenderContext, renderer: &mut Renderer) -> Result<()>;
 }
 
 pub struct Renderer {
@@ -265,7 +256,7 @@ impl Renderer {
         }
     }
 
-    pub fn begin_frame(&mut self) -> Option<RenderFrame<'_>> {
+    pub fn begin_frame(&mut self) -> Option<RenderFrame> {
         // Handle swapchain rebuild if needed
         if self.needs_rebuild {
             self.needs_rebuild = false;
@@ -324,10 +315,9 @@ impl Renderer {
         }
 
         let render_ctx = RenderContext::new(
-            (*self.context.device).clone(),
+            Arc::clone(&self.context.device),
             cmd_buffer,
             self.swapchain.extent,
-            &mut self.pipeline_manager,
         );
 
         // Transition to render target
@@ -351,7 +341,7 @@ impl Renderer {
             swapchain_image: self.swapchain.images[image_index as usize],
             swapchain_loader: self.swapchain_loader.clone(),
             graphics_queue: self.graphics_queue,
-            device: (*self.context.device).clone(),
+            device: Arc::clone(&self.context.device),
             image_index,
             cmd_buffer,
             wait_semaphore: image_available_sem,
@@ -364,10 +354,15 @@ impl Renderer {
 
         Some(frame)
     }
+
+    /// Get a pipeline by ID
+    pub fn get_pipeline(&mut self, id: crate::renderer::PipelineId) -> Result<vk::Pipeline> {
+        self.pipeline_manager.get(id)
+    }
 }
 
-pub struct RenderFrame<'a> {
-    render_ctx: RenderContext<'a>,
+pub struct RenderFrame {
+    pub render_ctx: RenderContext,
     swapchain: vk::SwapchainKHR,
     swapchain_image: vk::Image,
     swapchain_loader: Arc<ash::khr::swapchain::Device>,
@@ -380,10 +375,7 @@ pub struct RenderFrame<'a> {
     fence: vk::Fence,
 }
 
-impl<'a> RenderFrame<'a> {
-    pub fn render_context(&mut self) -> &mut RenderContext<'a> {
-        &mut self.render_ctx
-    }
+impl RenderFrame {
 }
 
 impl Drop for Renderer {
@@ -406,7 +398,7 @@ impl Drop for Renderer {
     }
 }
 
-impl<'a> Drop for RenderFrame<'a> {
+impl Drop for RenderFrame {
     fn drop(&mut self) {
         // End rendering
         self.render_ctx.end_rendering();

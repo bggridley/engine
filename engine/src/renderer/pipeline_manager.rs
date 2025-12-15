@@ -5,7 +5,7 @@ use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use super::{PipelineBuilder, ShaderId};
+use super::{PipelineBuilder, ShaderId, VertexFormat};
 
 /// Predefined pipeline types in the engine
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
@@ -20,6 +20,7 @@ pub enum PipelineId {
 struct PipelineMeta {
     vertex_shader: ShaderId,
     fragment_shader: ShaderId,
+    vertex_format: VertexFormat,
     blend_enabled: bool,
     cull_mode: vk::CullModeFlags,
 }
@@ -30,12 +31,14 @@ impl PipelineId {
             PipelineId::BasicGeometry => PipelineMeta {
                 vertex_shader: ShaderId::TriangleVertex,
                 fragment_shader: ShaderId::TriangleFrag,
+                vertex_format: VertexFormat::ColorVertex2D,
                 blend_enabled: false,
                 cull_mode: vk::CullModeFlags::BACK,
             },
             PipelineId::UI => PipelineMeta {
                 vertex_shader: ShaderId::TriangleVertex,
                 fragment_shader: ShaderId::TriangleFrag,
+                vertex_format: VertexFormat::ColorVertex2D,
                 blend_enabled: true,
                 cull_mode: vk::CullModeFlags::NONE,
             },
@@ -49,26 +52,9 @@ impl PipelineId {
         let vert_code = meta.vertex_shader.load_shader_bytes()?;
         let frag_code = meta.fragment_shader.load_shader_bytes()?;
 
-        // Vertex input for basic colored vertices (position + color)
-        let vertex_bindings = vec![
-            vk::VertexInputBindingDescription::default()
-                .binding(0)
-                .stride(std::mem::size_of::<crate::renderer::Vertex>() as u32)
-                .input_rate(vk::VertexInputRate::VERTEX),
-        ];
-
-        let vertex_attributes = vec![
-            vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(0),
-            vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(1)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(8),
-        ];
+        // Get vertex format from metadata
+        let vertex_bindings = vec![meta.vertex_format.binding()];
+        let vertex_attributes = meta.vertex_format.attributes();
 
         PipelineBuilder::new(vert_code, frag_code)
             .vertex_input(vertex_bindings, vertex_attributes)

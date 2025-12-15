@@ -55,8 +55,8 @@ fn main() -> Result<()> {
                     }
 
                     // Begin frame and render
-                    if let Some(mut frame) = renderer.begin_frame() {
-                        ui.render(frame.render_context()).ok();
+                    if let Some(frame) = renderer.begin_frame() {
+                        ui.render(&frame.render_ctx, &mut renderer).ok();
                         // Frame automatically ends when dropped
                         
                         frame_count += 1;

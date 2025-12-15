@@ -14,8 +14,8 @@ impl TriangleComponent {
 }
 
 impl Renderable for TriangleComponent {
-    fn render(&self, ctx: &mut RenderContext) -> Result<()> {
-        self.renderer.render(ctx, crate::renderer::PipelineId::BasicGeometry)
+    fn render(&self, ctx: &RenderContext, renderer: &mut crate::renderer::Renderer) -> Result<()> {
+        self.renderer.render(ctx, renderer)
     }
 }
 
@@ -35,9 +35,9 @@ impl UISystem {
         self.components.push(component);
     }
 
-    pub fn render(&self, ctx: &mut RenderContext) -> Result<()> {
+    pub fn render(&self, ctx: &RenderContext, renderer: &mut crate::renderer::Renderer) -> Result<()> {
         for component in &self.components {
-            component.render(ctx)?;
+            component.render(ctx, renderer)?;
         }
         Ok(())
     }

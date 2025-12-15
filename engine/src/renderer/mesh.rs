@@ -353,7 +353,7 @@ impl<V> Mesh<V> {
     }
 
     /// Draw this mesh using the current pipeline
-    pub fn draw(&self, ctx: &mut crate::renderer::RenderContext) -> Result<()> {
+    pub fn draw(&self, ctx: &crate::renderer::RenderContext) -> Result<()> {
         ctx.bind_vertex_buffer(self.vertex_buffer.buffer);
         
         if let Some(ref indices) = self.index_buffer {

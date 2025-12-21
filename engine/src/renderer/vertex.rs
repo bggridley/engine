@@ -36,6 +36,14 @@ pub struct GlyphInstance {
     pub color: [f32; 4],
 }
 
+/// Push constants for rendering (projection + transform matrices)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct PushConstants2D {
+    pub projection: glam::Mat4,
+    pub transform: glam::Mat4,
+}
+
 /// Vertex format descriptor for pipeline creation
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VertexFormat {

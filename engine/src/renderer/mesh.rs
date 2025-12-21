@@ -246,10 +246,17 @@ impl PipelineBuilder {
             )?
         };
 
-        // Create pipeline layout
+        // Create pipeline layout with push constants
+        let push_constant_range = vk::PushConstantRange::default()
+            .stage_flags(vk::ShaderStageFlags::VERTEX)
+            .offset(0)
+            .size(std::mem::size_of::<crate::renderer::PushConstants2D>() as u32);
+
+        let push_constant_ranges = [push_constant_range];
         let pipeline_layout = unsafe {
             device.create_pipeline_layout(
-                &vk::PipelineLayoutCreateInfo::default(),
+                &vk::PipelineLayoutCreateInfo::default()
+                    .push_constant_ranges(&push_constant_ranges),
                 None,
             )?
         };

@@ -138,6 +138,23 @@ impl RenderContext {
         }
     }
 
+    /// Push constants (fast per-draw uniforms)
+    pub fn push_constants<T>(&self, layout: vk::PipelineLayout, data: &T) {
+        unsafe {
+            let bytes = std::slice::from_raw_parts(
+                data as *const T as *const u8,
+                std::mem::size_of::<T>(),
+            );
+            self.device.cmd_push_constants(
+                self.cmd_buffer,
+                layout,
+                vk::ShaderStageFlags::VERTEX,
+                0,
+                bytes,
+            );
+        }
+    }
+
     /// Draw vertices
     pub fn draw(&self, vertex_count: u32, instance_count: u32, first_vertex: u32, first_instance: u32) {
         unsafe {
@@ -177,7 +194,7 @@ pub struct Renderer {
     graphics_queue: vk::Queue,
     needs_rebuild: bool,
     current_frame: usize,
-    projection: glam::Mat4,
+    pub projection: glam::Mat4,
 }
 
 impl Renderer {
@@ -255,14 +272,16 @@ impl Renderer {
         }
 
 
-        self.projection = glam::Mat4::orthographic_rh_gl(
+        self.projection = glam::Mat4::orthographic_rh(
             0.0,
-            width as f32 / scale_factor,
-            height as f32 / scale_factor,
+            width as f32,
             0.0,
+            height as f32,
             -1.0,
             1.0,
         );
+
+        println!("Updated projection matrix for new size: {:?}", self.projection);
     }
 
     pub fn begin_frame(&mut self) -> Option<RenderFrame> {
@@ -367,6 +386,10 @@ impl Renderer {
     /// Get a pipeline by ID
     pub fn get_pipeline(&mut self, id: crate::renderer::PipelineId) -> Result<vk::Pipeline> {
         self.pipeline_manager.get(id)
+    }
+
+    pub fn get_pipeline_layout(&self, id: crate::renderer::PipelineId) -> Option<vk::PipelineLayout> {
+        self.pipeline_manager.get_layout(id)
     }
 }
 

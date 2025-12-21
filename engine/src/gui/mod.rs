@@ -8,6 +8,7 @@ pub trait GUIComponent {
     fn render(&self, ctx: &RenderContext, renderer: &mut crate::renderer::Renderer) -> Result<()>;
     fn set_position(&mut self, x: f32, y: f32);
     fn set_scale(&mut self, scale: f32);
+    fn set_rotation(&mut self, rotation: f32);
 }
 
 /// Simple triangle GUI component
@@ -16,7 +17,7 @@ pub trait GUIComponent {
 pub struct UISystem {
     components: Vec<Box<dyn GUIComponent>>,
 }
-
+pub struct ComponentHandle(usize);
 
 impl UISystem {
     pub fn new() -> Self {
@@ -25,8 +26,10 @@ impl UISystem {
         }
     }
 
-    pub fn add_component(&mut self, component: Box<dyn GUIComponent>) {
+    pub fn add_component(&mut self, component: Box<dyn GUIComponent>) -> ComponentHandle {
+        let id = self.components.len();
         self.components.push(component);
+        ComponentHandle(id)
     }
 
     pub fn render(&self, ctx: &RenderContext, renderer: &mut crate::renderer::Renderer) -> Result<()> {
@@ -34,6 +37,10 @@ impl UISystem {
             component.render(ctx, renderer)?;
         }
         Ok(())
+    }
+
+    pub fn get_component_mut(&mut self, handle: &ComponentHandle) -> Option<&mut Box<dyn GUIComponent>> {
+        self.components.get_mut(handle.0)
     }
 }
 

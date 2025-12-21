@@ -14,7 +14,7 @@ mod mesh;
 pub use mesh::{IndexBuffer, Mesh, PipelineBuilder, VertexBuffer};
 
 mod vertex;
-pub use vertex::{ColorVertex2D, GlyphInstance, ModelVertex3D, TexturedVertex2D, VertexFormat};
+pub use vertex::{ColorVertex2D, GlyphInstance, ModelVertex3D, TexturedVertex2D, VertexFormat, PushConstants2D};
 
 mod pipeline_manager;
 pub use pipeline_manager::{PipelineId, PipelineManager};

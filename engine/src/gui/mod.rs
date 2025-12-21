@@ -1,52 +1,41 @@
-use crate::renderer::Renderable;
 use anyhow::Result;
-use std::any::Any;
 
+pub mod triangle;
+pub use triangle::{TriangleComponent, Vertex};
+
+use glam::{Mat4, Vec2};
 /// Base GUI component trait
-pub trait GUIComponent: Renderable + Send + Sync {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
-/// Simple triangle GUI component
-pub struct TriangleComponent {
-    pub renderer: crate::renderer::TriangleRenderer,
-}
-
-impl TriangleComponent {
-    pub fn new(context: &std::sync::Arc<crate::renderer::VulkanContext>) -> Result<Self> {
-        let renderer = crate::renderer::TriangleRenderer::new(context)?;
-        Ok(TriangleComponent { renderer })
-    }
-}
-
-impl Renderable for TriangleComponent {
-    fn render(&self, ctx: &crate::renderer::RenderContext) -> Result<()> {
-        self.renderer.render_to_context(ctx)?;
-        Ok(())
-    }
-}
-
-impl GUIComponent for TriangleComponent {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
+pub trait GUIComponent: Send + Sync {
+    fn render(&self, ctx: &crate::renderer::RenderContext, projection: glam::Mat4) -> Result<()>;
+    fn set_pos(&mut self, _x: f32, _y: f32);
 }
 
 /// GUI system that manages all components
 pub struct UISystem {
     components: Vec<Box<dyn GUIComponent>>,
+    projection: glam::Mat4,
+    window_size: glam::Vec2,
+    scale_factor: f32,
 }
 
 impl UISystem {
     pub fn new() -> Self {
         UISystem {
             components: Vec::new(),
+            projection: Mat4::IDENTITY,
+            window_size: Vec2::ZERO,
+            scale_factor: 1.0,
         }
+    }
+
+    pub fn update_size(&mut self, width: u32, height: u32, scale_factor: f32) {
+        self.window_size = Vec2::new(width as f32, height as f32);
+        self.scale_factor = scale_factor;
+
+        // Orthographic projection: pixel-based coordinates
+        let w = width as f32 / scale_factor;
+        let h = height as f32 / scale_factor;
+        self.projection = Mat4::orthographic_rh(0.0, w, h, 0.0, 0.1, 100.0);
     }
 
     pub fn add_component(&mut self, component: Box<dyn GUIComponent>) {
@@ -55,7 +44,7 @@ impl UISystem {
 
     pub fn render(&self, ctx: &crate::renderer::RenderContext) -> Result<()> {
         for component in &self.components {
-            component.render(ctx)?;
+            component.render(ctx, self.projection)?;
         }
         Ok(())
     }

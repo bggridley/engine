@@ -1,8 +1,10 @@
 use anyhow::Result;
+use ash::khr::swapchain::Device as SwapchainDevice;
+use ash::vk;
 use engine::{
+    gui::{TriangleComponent, UISystem},
+    renderer::{CommandPool, FrameSynchronizer, RenderContext, Swapchain, VulkanContext},
     window::EventLoop,
-    renderer::{VulkanContext, Swapchain, CommandPool, FrameSynchronizer, RenderContext},
-    gui::{UISystem, TriangleComponent},
 };
 use std::sync::Arc;
 use winit::{
@@ -10,8 +12,6 @@ use winit::{
     event::{Event, WindowEvent},
     window::WindowBuilder,
 };
-use ash::khr::swapchain::Device as SwapchainDevice;
-use ash::vk;
 
 fn main() -> Result<()> {
     let event_loop = EventLoop::new()?;
@@ -50,7 +50,9 @@ fn main() -> Result<()> {
 
     // Get graphics queue
     let graphics_queue = unsafe {
-        context.device.get_device_queue(context.queue_family_indices[0], 0)
+        context
+            .device
+            .get_device_queue(context.queue_family_indices[0], 0)
     };
 
     // Create UI system
@@ -64,10 +66,17 @@ fn main() -> Result<()> {
 
     event_loop.run(move |event, window_target| {
         match event {
-            Event::WindowEvent { event: window_event, .. } => match window_event {
+            Event::WindowEvent {
+                event: window_event,
+                ..
+            } => match window_event {
                 WindowEvent::CloseRequested => {
                     window_target.exit();
                 }
+                WindowEvent::Resized(size) => {
+                    ui.update_size(size.width, size.height, window.scale_factor() as f32);
+                }
+
                 WindowEvent::RedrawRequested => {
                     frame_sync.begin_frame().ok();
 
@@ -87,17 +96,23 @@ fn main() -> Result<()> {
 
                     // Record commands
                     unsafe {
-                        context.device.reset_command_buffer(cmd_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES).ok();
+                        context
+                            .device
+                            .reset_command_buffer(
+                                cmd_buffer,
+                                vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+                            )
+                            .ok();
                         let begin_info = vk::CommandBufferBeginInfo::default()
                             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-                        context.device.begin_command_buffer(cmd_buffer, &begin_info).ok();
+                        context
+                            .device
+                            .begin_command_buffer(cmd_buffer, &begin_info)
+                            .ok();
                     }
 
-                    let render_ctx = RenderContext::new(
-                        context.device.clone(),
-                        cmd_buffer,
-                        swapchain.extent,
-                    );
+                    let render_ctx =
+                        RenderContext::new(context.device.clone(), cmd_buffer, swapchain.extent);
 
                     // Transition to render target
                     render_ctx.transition_image(
@@ -146,7 +161,14 @@ fn main() -> Result<()> {
                             .wait_dst_stage_mask(&wait_stages)
                             .signal_semaphores(&signal_sems);
 
-                        context.device.queue_submit(graphics_queue, &[submit_info], frame_sync.current_in_flight_fence()).ok();
+                        context
+                            .device
+                            .queue_submit(
+                                graphics_queue,
+                                &[submit_info],
+                                frame_sync.current_in_flight_fence(),
+                            )
+                            .ok();
 
                         let signal_sems_present = [frame_sync.current_render_finished_semaphore()];
                         let swapchains = [swapchain.swapchain];

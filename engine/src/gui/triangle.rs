@@ -1,8 +1,10 @@
 use anyhow::Result;
-use ash::vk;
+use ash::vk::{self, ShaderStageFlags};
 use std::sync::Arc;
 
-use crate::renderer::{ShaderManager, ShaderId};
+use crate::renderer::{ShaderId, ShaderManager};
+use crate::gui::GUIComponent;
+use glam::Vec2;
 
 #[repr(C)]
 pub struct Vertex {
@@ -10,17 +12,35 @@ pub struct Vertex {
     pub color: [f32; 3],
 }
 
-pub struct TriangleRenderer {
+pub struct TriangleComponent {
     device: Arc<ash::Device>,
     pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
     pub vertex_buffer: vk::Buffer,
     pub vertex_buffer_memory: vk::DeviceMemory,
+    pos: glam::Vec2,
 }
 
-impl TriangleRenderer {
+
+impl GUIComponent for TriangleComponent {
+    fn render(&self, ctx: &crate::renderer::RenderContext) -> Result<()> {
+        ctx.bind_pipeline(self.pipeline);
+        ctx.bind_vertex_buffer(self.vertex_buffer);
+        ctx.draw(3, 1, 0, 0);
+        Ok(())
+    }
+
+    fn set_pos(&mut self, _x: f32, _y: f32) {
+        // Triangle position is fixed; no-op
+        self.pos.x = _x;
+        self.pos.y = _y;
+    }
+}
+
+impl TriangleComponent {
     pub fn new(context: &Arc<crate::renderer::VulkanContext>) -> Result<Self> {
         // Compile shaders from files
+        let pos = Vec2::new(0.0, 0.0);
         let shader_manager = ShaderManager::new()?;
         shader_manager.compile_all_shaders()?;
 
@@ -42,10 +62,16 @@ impl TriangleRenderer {
             )?
         };
 
+        let push_constant_range = vk::PushConstantRange::default()
+            .stage_flags(ShaderStageFlags::VERTEX)
+            .offset(0)
+            .size(std::mem::size_of::<[f32; 4]>() as u32 * 4);
+
         // Create pipeline layout
         let pipeline_layout = unsafe {
             context.device.create_pipeline_layout(
-                &vk::PipelineLayoutCreateInfo::default(),
+                &vk::PipelineLayoutCreateInfo::default()
+                    .push_constant_ranges(&[push_constant_range]),
                 None,
             )?
         };
@@ -99,8 +125,8 @@ impl TriangleRenderer {
             .attachments(&attachments);
 
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
-            .dynamic_states(&dynamic_states);
+        let dynamic_state =
+            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
         let shader_stages = [
             vk::PipelineShaderStageCreateInfo::default()
@@ -129,7 +155,9 @@ impl TriangleRenderer {
             .push_next(&mut rendering_info);
 
         let pipeline = unsafe {
-            context.device.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
+            context
+                .device
+                .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
                 .expect("Failed to create graphics pipeline")[0]
         };
 
@@ -162,7 +190,8 @@ impl TriangleRenderer {
 
         let vertex_buffer = unsafe { context.device.create_buffer(&buffer_info, None)? };
 
-        let mem_requirements = unsafe { context.device.get_buffer_memory_requirements(vertex_buffer) };
+        let mem_requirements =
+            unsafe { context.device.get_buffer_memory_requirements(vertex_buffer) };
 
         // Find suitable memory type
         let mem_type_index = find_memory_type(
@@ -179,7 +208,9 @@ impl TriangleRenderer {
         let vertex_buffer_memory = unsafe { context.device.allocate_memory(&alloc_info, None)? };
 
         unsafe {
-            context.device.bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)?;
+            context
+                .device
+                .bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)?;
         }
 
         // Copy vertex data to buffer
@@ -198,44 +229,34 @@ impl TriangleRenderer {
             context.device.unmap_memory(vertex_buffer_memory);
         }
 
-        Ok(TriangleRenderer {
+        Ok(TriangleComponent {
             device: context.device.clone(),
             pipeline,
             pipeline_layout,
             vertex_buffer,
             vertex_buffer_memory,
+            pos,
         })
     }
 
-    pub fn draw(
-        &self,
-        device: &Arc<ash::Device>,
-        cmd_buffer: vk::CommandBuffer,
-    ) {
+    pub fn draw(&self, device: &Arc<ash::Device>, cmd_buffer: vk::CommandBuffer) {
         unsafe {
             device.cmd_bind_pipeline(cmd_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             device.cmd_bind_vertex_buffers(cmd_buffer, 0, &[self.vertex_buffer], &[0]);
             device.cmd_draw(cmd_buffer, 3, 1, 0, 0);
         }
     }
-
-    /// Render using a RenderContext for higher-level API
-    pub fn render_to_context(&self, ctx: &crate::renderer::RenderContext) -> Result<()> {
-        ctx.bind_pipeline(self.pipeline);
-        ctx.bind_vertex_buffer(self.vertex_buffer);
-        ctx.draw(3, 1, 0, 0);
-        Ok(())
-    }
 }
 
-impl Drop for TriangleRenderer {
+impl Drop for TriangleComponent {
     fn drop(&mut self) {
         unsafe {
             let _ = self.device.device_wait_idle();
             self.device.destroy_buffer(self.vertex_buffer, None);
             self.device.free_memory(self.vertex_buffer_memory, None);
             self.device.destroy_pipeline(self.pipeline, None);
-            self.device.destroy_pipeline_layout(self.pipeline_layout, None);
+            self.device
+                .destroy_pipeline_layout(self.pipeline_layout, None);
         }
     }
 }
@@ -247,7 +268,7 @@ fn find_memory_type(
     properties: vk::MemoryPropertyFlags,
 ) -> Result<u32> {
     let mem_props = unsafe { instance.get_physical_device_memory_properties(physical_device) };
-    
+
     for i in 0..mem_props.memory_type_count {
         if (mem_requirements.memory_type_bits & (1 << i)) != 0
             && (mem_props.memory_types[i as usize].property_flags & properties) == properties
@@ -255,6 +276,6 @@ fn find_memory_type(
             return Ok(i);
         }
     }
-    
+
     anyhow::bail!("No suitable memory type found")
 }

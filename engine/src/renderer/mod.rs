@@ -13,9 +13,6 @@ pub use sync::FrameSynchronizer;
 pub mod dynamic_rendering;
 pub use dynamic_rendering::{DynamicRenderingAttachment, ViewportScissor, color_attachment, depth_attachment};
 
-pub mod triangle;
-pub use triangle::{TriangleRenderer, Vertex};
-
 pub mod shader_manager;
 pub use shader_manager::{ShaderManager, ShaderId};
 

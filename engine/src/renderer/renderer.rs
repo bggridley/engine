@@ -8,6 +8,7 @@ pub struct RenderContext {
     device: Arc<Device>,
     cmd_buffer: vk::CommandBuffer,
     extent: vk::Extent2D,
+
 }
 
 impl RenderContext {
@@ -165,10 +166,6 @@ impl RenderContext {
     }
 }
 
-/// Trait for anything that can be rendered
-pub trait Renderable {
-    fn render(&self, ctx: &RenderContext, renderer: &mut Renderer) -> Result<()>;
-}
 
 pub struct Renderer {
     context: Arc<VulkanContext>,
@@ -180,6 +177,7 @@ pub struct Renderer {
     graphics_queue: vk::Queue,
     needs_rebuild: bool,
     current_frame: usize,
+    projection: glam::Mat4,
 }
 
 impl Renderer {
@@ -245,15 +243,26 @@ impl Renderer {
             graphics_queue,
             needs_rebuild: false,
             current_frame: 0,
+            projection: glam::Mat4::IDENTITY,
         })
     }
 
-    pub fn handle_resize(&mut self, width: u32, height: u32) {
+    pub fn handle_resize(&mut self, width: u32, height: u32, scale_factor: f32) {
         // Only recreate if size actually changed
         if width > 0 && height > 0 && (width != self.swapchain.extent.width || height != self.swapchain.extent.height) {
             println!("Resizing swapchain: {}x{} -> {}x{}", self.swapchain.extent.width, self.swapchain.extent.height, width, height);
             self.swapchain.recreate(vk::Extent2D { width, height });
         }
+
+
+        self.projection = glam::Mat4::orthographic_rh_gl(
+            0.0,
+            width as f32 / scale_factor,
+            height as f32 / scale_factor,
+            0.0,
+            -1.0,
+            1.0,
+        );
     }
 
     pub fn begin_frame(&mut self) -> Option<RenderFrame> {

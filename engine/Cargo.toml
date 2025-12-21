@@ -15,7 +15,7 @@ naga = { version = "0.20", features = ["glsl-in", "spv-out"] }
 strum = "0.27.2"
 strum_macros = "0.27.2"
 bytemuck = "1.24.0"
-nalgebra = "0.32"
+glam = "0.30.9"
 
 [lib]
 # This tells Cargo it’s a library crate

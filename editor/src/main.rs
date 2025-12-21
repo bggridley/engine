@@ -1,8 +1,6 @@
 use anyhow::Result;
 use engine::{
-    window::EventLoop,
-    renderer::{VulkanContext, Renderer},
-    gui::{UISystem, TriangleComponent},
+    gui::{GUIComponent, TriangleComponent, UISystem}, renderer::{Renderer, VulkanContext}, window::EventLoop
 };
 use std::sync::Arc;
 use winit::{
@@ -51,7 +49,7 @@ fn main() -> Result<()> {
                 WindowEvent::RedrawRequested => {
                     // Handle resize
                     if let Some((width, height)) = last_resize_size.take() {
-                        renderer.handle_resize(width, height);
+                        renderer.handle_resize(width, height, window.scale_factor() as f32);
                     }
 
                     // Begin frame and render

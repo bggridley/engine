@@ -19,11 +19,8 @@ pub use vertex::{ColorVertex2D, GlyphInstance, ModelVertex3D, TexturedVertex2D, 
 mod pipeline_manager;
 pub use pipeline_manager::{PipelineId, PipelineManager};
 
-mod triangle;
-pub use triangle::TriangleRenderer;
-
 mod shader_manager;
 pub use shader_manager::{ShaderManager, ShaderId};
 
 mod renderer;
-pub use renderer::{RenderContext, Renderable, Renderer};
+pub use renderer::{RenderContext, Renderer};

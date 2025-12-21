@@ -1,28 +1,22 @@
-use crate::renderer::{RenderContext, Renderable};
+use crate::renderer::{RenderContext};
 use anyhow::Result;
 
+mod triangle;
+pub use triangle::{TriangleComponent};
+
+pub trait GUIComponent {
+    fn render(&self, ctx: &RenderContext, renderer: &mut crate::renderer::Renderer) -> Result<()>;
+    fn set_position(&mut self, x: f32, y: f32);
+    fn set_scale(&mut self, scale: f32);
+}
+
 /// Simple triangle GUI component
-pub struct TriangleComponent {
-    pub renderer: crate::renderer::TriangleRenderer,
-}
-
-impl TriangleComponent {
-    pub fn new(context: &std::sync::Arc<crate::renderer::VulkanContext>) -> Result<Self> {
-        let renderer = crate::renderer::TriangleRenderer::new(context)?;
-        Ok(TriangleComponent { renderer })
-    }
-}
-
-impl Renderable for TriangleComponent {
-    fn render(&self, ctx: &RenderContext, renderer: &mut crate::renderer::Renderer) -> Result<()> {
-        self.renderer.render(ctx, renderer)
-    }
-}
 
 /// GUI system that manages renderable components
 pub struct UISystem {
-    components: Vec<Box<dyn Renderable>>,
+    components: Vec<Box<dyn GUIComponent>>,
 }
+
 
 impl UISystem {
     pub fn new() -> Self {
@@ -31,7 +25,7 @@ impl UISystem {
         }
     }
 
-    pub fn add_component(&mut self, component: Box<dyn Renderable>) {
+    pub fn add_component(&mut self, component: Box<dyn GUIComponent>) {
         self.components.push(component);
     }
 

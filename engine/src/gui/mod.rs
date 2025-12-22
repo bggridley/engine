@@ -4,6 +4,18 @@ use anyhow::Result;
 mod button;
 pub use button::ButtonComponent;
 
+mod panel;
+pub use panel::PanelComponent;
+
+mod container;
+pub use container::ContainerPanel;
+
+mod grid;
+pub use grid::{Grid, GridRow, LayoutConstraints};
+
+mod layout;
+pub use layout::{ComputedLayout, HAlign, LayoutSpec, SizeSpec, VAlign};
+
 pub use glam::Vec2;
 
 #[derive(Clone, Copy, Debug)]
@@ -54,60 +66,42 @@ pub trait GUIComponent {
 
 /// Simple triangle GUI component
 
-/// GUI system that manages renderable components
+/// GUI system that manages renderable components via a grid layout
 pub struct UISystem {
-    components: Vec<Box<dyn GUIComponent>>,
+    pub grid: Grid,
 }
+
 #[derive(Clone, Copy)]
 pub struct ComponentHandle(usize);
+
 impl UISystem {
     pub fn new() -> Self {
         UISystem {
-            components: Vec::new(),
+            grid: Grid::new(),
         }
     }
 
-    // These three methods will be optimized later by using a grid or something
+    pub fn render(&self, ctx: &RenderContext, renderer: &mut crate::renderer::Renderer) -> anyhow::Result<()> {
+        self.grid.render(ctx, renderer)
+    }
+
     pub fn handle_mouse_down(&mut self, x: f32, y: f32) {
-        for component in &mut self.components {
-            component.handle_mouse_down(x, y);
-        }
+        self.grid.handle_mouse_down(x, y);
     }
 
     pub fn handle_mouse_up(&mut self, x: f32, y: f32) {
-        for component in &mut self.components {
-            component.handle_mouse_up(x, y);
-        }
+        self.grid.handle_mouse_up(x, y);
     }
 
     pub fn handle_mouse_move(&mut self, x: f32, y: f32) {
-        for component in &mut self.components {
-            component.handle_mouse_move(x, y);
-        }
+        self.grid.handle_mouse_move(x, y);
     }
 
-    pub fn add_component(&mut self, component: Box<dyn GUIComponent>) -> ComponentHandle {
-        let id = self.components.len();
-        self.components.push(component);
-        ComponentHandle(id)
-    }
-
-    pub fn render(
-        &self,
-        ctx: &RenderContext,
-        renderer: &mut crate::renderer::Renderer,
-    ) -> Result<()> {
-        for component in &self.components {
-            component.render(ctx, renderer)?;
-        }
-        Ok(())
-    }
-
-    pub fn get_component_mut(
-        &mut self,
-        handle: &ComponentHandle,
-    ) -> Option<&mut Box<dyn GUIComponent>> {
-        self.components.get_mut(handle.0)
+    /// Update layout for nested containers after main grid layout has been set
+    pub fn update_nested_layouts(&mut self) {
+        // This is a placeholder - the real implementation would require
+        // the ability to downcast components to ContainerPanel
+        // For now, containers will need to be updated manually
     }
 }
 

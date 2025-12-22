@@ -194,6 +194,8 @@ pub struct Renderer {
     graphics_queue: vk::Queue,
     needs_rebuild: bool,
     current_frame: usize,
+    width: u32,
+    height: u32,
     pub projection: glam::Mat4,
 }
 
@@ -260,12 +262,19 @@ impl Renderer {
             graphics_queue,
             needs_rebuild: false,
             current_frame: 0,
+            width,
+            height,
             projection: glam::Mat4::IDENTITY,
         })
     }
 
     pub fn handle_resize(&mut self, width: u32, height: u32, scale_factor: f32) {
         // Only recreate if size actually changed
+
+        // not sure if keeping this out of the if statement will lead to unexpected behavior down the road
+        self.width = width;
+        self.height = height;
+
         if width > 0 && height > 0 && (width != self.swapchain.extent.width || height != self.swapchain.extent.height) {
             println!("Resizing swapchain: {}x{} -> {}x{}", self.swapchain.extent.width, self.swapchain.extent.height, width, height);
             self.swapchain.recreate(vk::Extent2D { width, height });

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use engine::{
-    gui::{GUIComponent, ComponentHandle, TriangleComponent, UISystem},
+    gui::{GUIComponent, ComponentHandle, ButtonComponent, UISystem, Vec2},
     renderer::{Renderer, VulkanContext},
     window::EventLoop,
 };
@@ -35,19 +35,18 @@ fn main() -> Result<()> {
 
     // Create UI system
     let mut ui = UISystem::new();
-    let mut triangle = TriangleComponent::new(&context)?;
-    triangle.set_scale(60.0);
-    triangle.set_position(360.0, 360.0);
-    let mut offset = 0.0;
+    let mut button = ButtonComponent::new(&context)?;
 
-
-
-    let triangle_handle: ComponentHandle = ui.add_component(Box::new(triangle));
+    button.transform_mut().scale = Vec2::new(100.0, 50.0);
+    button.transform_mut().position = Vec2::new(200.0, 200.0);
+    // let mut offset = 0.0;
+    let _: ComponentHandle = ui.add_component(Box::new(button));
 
     println!("Vulkan Engine initialized!");
 
     let mut frame_count = 0u32;
     let mut last_resize_size: Option<(u32, u32)> = None;
+    let mut mouse_pos = (0.0f32, 0.0f32);  // Track mouse position
 
     event_loop.run(move |event, window_target| {
         match event {
@@ -63,21 +62,24 @@ fn main() -> Result<()> {
                     last_resize_size = Some((new_size.width, new_size.height));
                 }
 
-                // WindowEvent::CursorMoved { position, .. } => {
-                //     ui.handle_mouse_move(position.x as f32, position.y as f32);
-                // }
+                WindowEvent::CursorMoved { position, .. } => {
+                    let window_size = window.inner_size();
+                    let inverted_y = window_size.height as f32 - position.y as f32;
+                    mouse_pos = (position.x as f32, inverted_y);
+                    ui.handle_mouse_move(position.x as f32, inverted_y);
+                }
 
-                // WindowEvent::MouseInput { state, button, .. } => {
-                //     match state {
-                //         winit::event::ElementState::Pressed => {
-                //             ui.handle_mouse_down(0.0, 0.0); // Pass actual coords
-                //         }
+                WindowEvent::MouseInput { state, .. } => {
+                    match state {
+                        winit::event::ElementState::Pressed => {
+                            ui.handle_mouse_down(mouse_pos.0, mouse_pos.1);
+                        }
 
-                //         winit::event::ElementState::Released => {
-                //             ui.handle_mouse_up(0.0, 0.0);
-                //         }
-                //     }
-                // }
+                        winit::event::ElementState::Released => {
+                            ui.handle_mouse_up(mouse_pos.0, mouse_pos.1);
+                        }
+                    }
+                }
 
                 WindowEvent::RedrawRequested => {
                     // Handle resize
@@ -85,10 +87,10 @@ fn main() -> Result<()> {
                         renderer.handle_resize(width, height, window.scale_factor() as f32);
                     }
 
-                    if let Some(triangle) = ui.get_component_mut(&triangle_handle) {
-                        offset += 1.0 / (2.0 * 3.14);
-                        triangle.set_rotation(offset);
-                    }
+                    // if let Some(triangle) = ui.get_component_mut(&triangle_handle) {
+                    //     offset += 1.0 / (2.0 * 3.14);
+                    //     triangle.set_rotation(offset);
+                    // }
 
                     // Begin frame and render
                     if let Some(frame) = renderer.begin_frame() {

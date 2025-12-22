@@ -1,20 +1,18 @@
 use anyhow::Result;
 use std::sync::Arc;
 use crate::renderer::{ColorVertex2D, Mesh, PipelineId, RenderContext, VertexBuffer};
-use crate::gui::GUIComponent;
+use crate::gui::{GUIComponent, Transform2D};
 
 use crate::renderer::PushConstants2D;
 
 /// Triangle renderer - just holds the mesh geometry
 /// Pipeline is managed centrally by PipelineManager
-pub struct TriangleComponent {
+pub struct ButtonComponent {
     mesh: Mesh<ColorVertex2D>,
-    position: glam::Vec2,
-    scale: f32,
-    rotation: f32,
+    transform: Transform2D,
 }
 
-impl GUIComponent for TriangleComponent {
+impl GUIComponent for ButtonComponent {
     /// Render the triangle using the specified pipeline
     fn render(&self, ctx: &RenderContext, renderer: &mut crate::renderer::Renderer) -> Result<()> {
         let pipeline = renderer.get_pipeline(PipelineId::BasicGeometry)?;
@@ -25,9 +23,9 @@ impl GUIComponent for TriangleComponent {
         let push = PushConstants2D {
             projection: renderer.projection,  // Use ortho for 2D
             transform: 
-            glam::Mat4::from_translation(glam::Vec3::new(self.position.x, self.position.y, 0.0)) *
-            glam::Mat4::from_rotation_z(self.rotation) * 
-            glam::Mat4::from_scale(glam::Vec3::splat(self.scale)),
+            glam::Mat4::from_translation(glam::Vec3::new(self.transform.position.x, self.transform.position.y, 0.0)) *
+            glam::Mat4::from_rotation_z(self.transform.rotation) * 
+            glam::Mat4::from_scale(glam::Vec3::new(self.transform.scale.x, self.transform.scale.y, 1.0)),
         };
 
         ctx.push_constants(pipeline_layout, &push);
@@ -37,35 +35,56 @@ impl GUIComponent for TriangleComponent {
         Ok(())
     }
 
-    fn set_position(&mut self, x: f32, y: f32) {
-        self.position.x = x;
-        self.position.y = y;
+    fn handle_mouse_down(&mut self, x: f32, y: f32) {
+        if self.transform.contains_point(glam::Vec2::new(x, y)) {
+            println!("Button clicked at ({}, {})", x, y);
+        }
+    }
+    
+    fn handle_mouse_up(&mut self, _x: f32, _y: f32) {
+        
     }
 
-    fn set_rotation(&mut self, rotation: f32) {
-        self.rotation = rotation;
+    fn handle_mouse_move(&mut self, _x: f32, _y: f32) {
+
     }
 
-    fn set_scale(&mut self, scale: f32) {
-        self.scale = scale;
+    fn transform(&self) -> &Transform2D {
+        &self.transform
+    }
+    
+    fn transform_mut(&mut self) -> &mut Transform2D {
+        &mut self.transform
     }
 }
 
-impl TriangleComponent {
+impl ButtonComponent {
     pub fn new(context: &Arc<crate::renderer::VulkanContext>) -> Result<Self> {
         // Define triangle vertices
         let vertices = [
             ColorVertex2D {
-                position: [0.0, -0.5],
+                position: [-0.5, 0.5],
                 color: [1.0, 0.0, 0.0],
             },
             ColorVertex2D {
+                position: [-0.5, -0.5],
+                color: [1.0, 0.0, 0.0],
+            },
+            ColorVertex2D {
+                position: [0.5, -0.5],
+                color: [0.0, 0.0, 1.0],
+            },
+            ColorVertex2D {
+                position: [0.5, -0.5],
+                color: [0.0, 0.0, 1.0],
+            },
+            ColorVertex2D {
                 position: [0.5, 0.5],
-                color: [0.0, 1.0, 0.0],
+                color: [0.0, 0.0, 1.0],
             },
             ColorVertex2D {
                 position: [-0.5, 0.5],
-                color: [0.0, 0.0, 1.0],
+                color: [1.0, 0.0, 0.0],
             },
         ];
 
@@ -77,11 +96,9 @@ impl TriangleComponent {
             &vertices,
         )?;
 
-        Ok(TriangleComponent {
+        Ok(ButtonComponent {
             mesh: Mesh::new(vertex_buffer),
-            position: glam::Vec2::ZERO,
-            scale: 1.0,
-            rotation: 0.0,
+            transform: Transform2D::new(),
         })
     }
 }

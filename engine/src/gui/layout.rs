@@ -119,11 +119,11 @@ impl ComputedLayout {
             HAlign::Right => padded_x + padded_width - width / 2.0,
         };
 
-        // Compute Y position based on vertical alignment
+        // Compute Y position based on vertical alignment (Y=0 at bottom, increases upward)
         let y = match spec.v_align {
-            VAlign::Top => padded_y + height / 2.0,
+            VAlign::Top => padded_y + padded_height - height / 2.0,
             VAlign::Middle => padded_y + padded_height / 2.0,
-            VAlign::Bottom => padded_y + padded_height - height / 2.0,
+            VAlign::Bottom => padded_y + height / 2.0,
         };
 
         ComputedLayout {
@@ -161,12 +161,9 @@ impl ComputedLayout {
         // Pre-calculate all component widths
         let mut component_widths = Vec::new();
         for spec in specs.iter() {
-            // For percentage specs, compute relative to the full available width per component
+            // For percentage specs, compute relative to the full available width
             let width = match spec.width {
-                SizeSpec::Percent(pct) => {
-                    // Percentage of the full padded width divided by number of components
-                    (available_width / num_components) * pct.clamp(0.0, 1.0)
-                },
+                SizeSpec::Percent(pct) => available_width * pct.clamp(0.0, 1.0),
                 SizeSpec::Fixed(px) => px,
             };
             component_widths.push(width);
@@ -182,11 +179,11 @@ impl ComputedLayout {
                 + (i as f32 * (width + first_spec.margin))
                 + (width / 2.0);
 
-            // Vertical alignment
+            // Vertical alignment (Y=0 at bottom, increases upward)
             let y = match spec.v_align {
-                VAlign::Top => padded_y + height / 2.0,
+                VAlign::Top => padded_y + padded_height - height / 2.0,
                 VAlign::Middle => padded_y + padded_height / 2.0,
-                VAlign::Bottom => padded_y + padded_height - height / 2.0,
+                VAlign::Bottom => padded_y + height / 2.0,
             };
 
             result.push(ComputedLayout {

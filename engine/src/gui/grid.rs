@@ -153,12 +153,13 @@ impl Grid {
         }
 
         // Apply layout with calculated row heights and spacing
-        let mut current_y = y;
+        // Position rows starting from the top (high Y) going downward
+        let mut current_y = y + height; // Start at top
         for (i, (row, &row_height)) in self.rows.iter_mut().zip(row_heights.iter()).enumerate() {
+            current_y -= row_height; // Move down
             row.set_layout(x, current_y, width, row_height);
-            current_y += row_height;
             if i < num_rows - 1 {
-                current_y += row_spacing; // Add spacing between rows
+                current_y -= row_spacing; // Add spacing between rows
             }
         }
     }

@@ -62,6 +62,9 @@ impl ContainerPanel {
     /// Update the grid layout based on this container's current bounds
     /// Call this after the container's transform has been set by the parent layout
     pub fn update_grid_layout(&mut self) {
+        // Sync background panel transform with container transform
+        *self.background.transform_mut() = self.transform;
+        
         // Get the container bounds from its transform
         let x = self.transform.position.x - (self.transform.scale.x / 2.0);
         let y = self.transform.position.y - (self.transform.scale.y / 2.0);

@@ -34,6 +34,13 @@ fn main() -> Result<()> {
 
     let mut ui = UISystem::new();
 
+    // === TOP HEADER ROW (full width) ===
+    let header_row = ui.grid.add_row();
+    let header_panel = PanelComponent::new(&context, [0.1, 0.1, 0.15])?;
+    let header_spec = LayoutSpec::new(SizeSpec::Percent(1.0), SizeSpec::Fixed(60.0))
+        .with_alignment(HAlign::Center, VAlign::Top);
+    ui.grid.get_row_mut(header_row).unwrap().add_component(Box::new(header_panel), header_spec);
+
     // === MAIN ROW: Left sidebar + Right content ===
     let main_row = ui.grid.add_row();
 

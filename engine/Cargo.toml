@@ -16,6 +16,7 @@ strum = "0.27.2"
 strum_macros = "0.27.2"
 bytemuck = "1.24.0"
 glam = "0.30.9"
+rusttype = "0.9.3"
 
 [lib]
 # This tells Cargo it’s a library crate

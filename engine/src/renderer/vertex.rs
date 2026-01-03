@@ -25,17 +25,6 @@ pub struct ModelVertex3D {
     pub uv: [f32; 2],
 }
 
-/// Per-instance data for text rendering (instanced quad rendering)
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct GlyphInstance {
-    pub position: [f32; 2],
-    pub size: [f32; 2],
-    pub uv_min: [f32; 2],
-    pub uv_max: [f32; 2],
-    pub color: [f32; 4],
-}
-
 /// Push constants for rendering (projection + transform matrices)
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]

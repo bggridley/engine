@@ -25,7 +25,7 @@ impl TextComponent {
         
         // Build vertices for the text
         let mut vertices = Vec::new();
-        let scale = font_size / 128.0;  // FontAtlas rasterized at 128px
+        let scale = font_size / 64.0;  // FontAtlas rasterized at 64px
         
         // First pass: calculate total width for centering
         let total_width: f32 = text.chars().filter_map(|ch| {
@@ -33,39 +33,43 @@ impl TextComponent {
         }).sum();
 
         let start_x = -total_width / 2.0;  // Center horizontally around origin
-        let start_y = -font_size / 2.0;     // Center vertically around origin
+        let baseline_y = font_size * 0.25;  // Baseline positioned slightly below center
         let mut x = start_x;
 
         for ch in text.chars() {
             if let Some(glyph) = font_atlas.get_glyph(ch) {
                 let width = glyph.width * scale;
                 let height = glyph.height * scale;
+                let bearing_y = glyph.bearing_y * scale;
+                
+                // Y position: baseline minus the bearing (distance from baseline to top of glyph)
+                let y = baseline_y - bearing_y;
 
                 // First triangle
                 vertices.push(TexturedVertex2D {
-                    position: [x, start_y],
+                    position: [x, y],
                     uv: [glyph.uv_min.x, glyph.uv_min.y],
                 });
                 vertices.push(TexturedVertex2D {
-                    position: [x + width, start_y],
+                    position: [x + width, y],
                     uv: [glyph.uv_max.x, glyph.uv_min.y],
                 });
                 vertices.push(TexturedVertex2D {
-                    position: [x, start_y + height],
+                    position: [x, y + height],
                     uv: [glyph.uv_min.x, glyph.uv_max.y],
                 });
 
                 // Second triangle
                 vertices.push(TexturedVertex2D {
-                    position: [x + width, start_y],
+                    position: [x + width, y],
                     uv: [glyph.uv_max.x, glyph.uv_min.y],
                 });
                 vertices.push(TexturedVertex2D {
-                    position: [x + width, start_y + height],
+                    position: [x + width, y + height],
                     uv: [glyph.uv_max.x, glyph.uv_max.y],
                 });
                 vertices.push(TexturedVertex2D {
-                    position: [x, start_y + height],
+                    position: [x, y + height],
                     uv: [glyph.uv_min.x, glyph.uv_max.y],
                 });
 

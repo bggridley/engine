@@ -63,7 +63,7 @@ fn main() -> Result<()> {
 
     // Create ECS buttons with text
     let mut ecs_button1 = ButtonComponent::new(&context)?;
-    ecs_button1.set_text(TextComponent::new("Entity 1", font_atlas.clone(), 16.0, &context)?);
+    ecs_button1.set_text(TextComponent::new("Entity 1 this is some text", font_atlas.clone(), 16.0, &context)?);
 
     let mut ecs_button2 = ButtonComponent::new(&context)?;
     ecs_button2.set_text(TextComponent::new("Entity 2", font_atlas.clone(), 16.0, &context)?);

@@ -41,7 +41,7 @@ impl FontAtlas {
         let font = Font::try_from_vec(font_data)
             .ok_or_else(|| anyhow::anyhow!("Invalid font file format"))?;
 
-        let height: f32 = 128.0;
+        let height: f32 = 64.0;
         let scale = Scale {
             x: height,
             y: height,

@@ -155,6 +155,27 @@ impl RenderContext {
         }
     }
 
+    /// Bind descriptor sets
+    pub fn bind_descriptor_sets(
+        &self,
+        pipeline_bind_point: vk::PipelineBindPoint,
+        layout: vk::PipelineLayout,
+        first_set: u32,
+        descriptor_sets: &[vk::DescriptorSet],
+        dynamic_offsets: &[u32],
+    ) {
+        unsafe {
+            self.device.cmd_bind_descriptor_sets(
+                self.cmd_buffer,
+                pipeline_bind_point,
+                layout,
+                first_set,
+                descriptor_sets,
+                dynamic_offsets,
+            );
+        }
+    }
+
     /// Draw vertices
     pub fn draw(&self, vertex_count: u32, instance_count: u32, first_vertex: u32, first_instance: u32) {
         unsafe {

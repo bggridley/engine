@@ -38,6 +38,7 @@ fn main() -> Result<()> {
         &context.device,
         &context.instance,
         context.physical_device,
+        context.queue_family_indices[0],
     )?);
 
     let mut ui = UISystem::new();

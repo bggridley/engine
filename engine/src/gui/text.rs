@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::sync::Arc;
+use ash::vk;
 use crate::gui::{GUIComponent, Transform2D};
 use crate::renderer::{RenderContext, Renderer, FontAtlas, TexturedVertex2D, VertexBuffer, Mesh, PipelineId, PushConstants2D};
 use glam::Vec2;
@@ -12,27 +13,27 @@ pub struct TextComponent {
     color: [f32; 3],
     font_size: f32,
     mesh: Mesh<TexturedVertex2D>,
+    descriptor_set: vk::DescriptorSet,
+    sampler: vk::Sampler,
+    device: Arc<ash::Device>,
 }
 
 impl TextComponent {
     /// Create a new text component
     pub fn new(text: &str, font_atlas: Arc<FontAtlas>, font_size: f32, context: &Arc<crate::renderer::VulkanContext>) -> Result<Self> {
+        let device = context.device.clone();
+        
         // Build vertices for the text
         let mut vertices = Vec::new();
-        let scale = font_size / 128.0;
-        let mut x = 0.0f32;
+        let scale = font_size / 128.0;  // FontAtlas rasterized at 128px
         
         // First pass: calculate total width for centering
-        let total_width: f32 = text.chars().map(|ch| {
-            if let Some(glyph) = font_atlas.get_glyph(ch) {
-                glyph.width * scale
-            } else {
-                0.0
-            }
+        let total_width: f32 = text.chars().filter_map(|ch| {
+            font_atlas.get_glyph(ch).map(|g| g.advance_width * scale)
         }).sum();
 
-        let start_x = -total_width / 2.0;  // Center horizontally
-        let start_y = -font_size / 2.0;     // Center vertically (approximate)
+        let start_x = -total_width / 2.0;  // Center horizontally around origin
+        let start_y = -font_size / 2.0;     // Center vertically around origin
         let mut x = start_x;
 
         for ch in text.chars() {
@@ -60,15 +61,111 @@ impl TextComponent {
                     uv: [glyph.uv_max.x, glyph.uv_min.y],
                 });
                 vertices.push(TexturedVertex2D {
+                    position: [x + width, start_y + height],
+                    uv: [glyph.uv_max.x, glyph.uv_max.y],
+                });
+                vertices.push(TexturedVertex2D {
                     position: [x, start_y + height],
                     uv: [glyph.uv_min.x, glyph.uv_max.y],
                 });
 
-                x += width;
+                x += glyph.advance_width * scale;
             }
         }
 
         let vertex_buffer = VertexBuffer::new(&context.device, context.physical_device, &context.instance, &vertices)?;
+
+        // Create sampler for font texture
+        let sampler_info = vk::SamplerCreateInfo::default()
+            .mag_filter(vk::Filter::LINEAR)
+            .min_filter(vk::Filter::LINEAR)
+            .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .anisotropy_enable(false)
+            .max_anisotropy(1.0)
+            .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
+            .unnormalized_coordinates(false)
+            .compare_enable(false)
+            .compare_op(vk::CompareOp::ALWAYS)
+            .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+            .mip_lod_bias(0.0)
+            .min_lod(0.0)
+            .max_lod(0.0);
+        
+        let sampler = unsafe { device.create_sampler(&sampler_info, None)? };
+
+        // Create descriptor pool
+        let pool_sizes = [
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::SAMPLED_IMAGE,
+                descriptor_count: 1,
+            },
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::SAMPLER,
+                descriptor_count: 1,
+            },
+        ];
+
+        let pool_info = vk::DescriptorPoolCreateInfo::default()
+            .pool_sizes(&pool_sizes)
+            .max_sets(1);
+
+        let descriptor_pool = unsafe { device.create_descriptor_pool(&pool_info, None)? };
+
+        // Get descriptor set layout from pipeline manager
+        let descriptor_set_layout = {
+            let bindings = [
+                vk::DescriptorSetLayoutBinding::default()
+                    .binding(0)
+                    .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                    .descriptor_count(1)
+                    .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+                vk::DescriptorSetLayoutBinding::default()
+                    .binding(1)
+                    .descriptor_type(vk::DescriptorType::SAMPLER)
+                    .descriptor_count(1)
+                    .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+            ];
+            
+            let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
+                .bindings(&bindings);
+            
+            unsafe { device.create_descriptor_set_layout(&layout_info, None)? }
+        };
+
+        // Allocate descriptor set
+        let layouts = [descriptor_set_layout];
+        let alloc_info = vk::DescriptorSetAllocateInfo::default()
+            .descriptor_pool(descriptor_pool)
+            .set_layouts(&layouts);
+
+        let descriptor_set = unsafe { device.allocate_descriptor_sets(&alloc_info)?[0] };
+
+        // Write descriptor set
+        let image_info = [vk::DescriptorImageInfo::default()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(font_atlas.texture_view)];
+
+        let sampler_info_write = [vk::DescriptorImageInfo::default()
+            .sampler(sampler)];
+
+        let descriptor_writes = [
+            vk::WriteDescriptorSet::default()
+                .dst_set(descriptor_set)
+                .dst_binding(0)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                .image_info(&image_info),
+            vk::WriteDescriptorSet::default()
+                .dst_set(descriptor_set)
+                .dst_binding(1)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::SAMPLER)
+                .image_info(&sampler_info_write),
+        ];
+
+        unsafe { device.update_descriptor_sets(&descriptor_writes, &[]) };
 
         Ok(TextComponent {
             text: text.to_string(),
@@ -77,6 +174,9 @@ impl TextComponent {
             color: [1.0, 1.0, 1.0],
             font_size,
             mesh: Mesh::new(vertex_buffer),
+            descriptor_set,
+            sampler,
+            device: Arc::clone(&*context.device),
         })
     }
 
@@ -113,6 +213,15 @@ impl GUIComponent for TextComponent {
         let pipeline_layout = renderer.get_pipeline_layout(PipelineId::Text)
             .ok_or_else(|| anyhow::anyhow!("Pipeline layout not found for Text pipeline"))?;
         ctx.bind_pipeline(pipeline);
+
+        // Bind descriptor set for font texture
+        ctx.bind_descriptor_sets(
+            vk::PipelineBindPoint::GRAPHICS,
+            pipeline_layout,
+            0,
+            &[self.descriptor_set],
+            &[],
+        );
 
         let push = PushConstants2D {
             projection: renderer.projection,

@@ -65,14 +65,37 @@ impl PipelineId {
         let vertex_bindings = vec![meta.vertex_format.binding()];
         let vertex_attributes = meta.vertex_format.attributes();
 
-        PipelineBuilder::new(vert_code, frag_code)
+        let mut builder = PipelineBuilder::new(vert_code, frag_code)
             .vertex_input(vertex_bindings, vertex_attributes)
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .polygon_mode(vk::PolygonMode::FILL)
             .cull_mode(meta.cull_mode, vk::FrontFace::COUNTER_CLOCKWISE)
             .color_format(vk::Format::B8G8R8A8_SRGB)
-            .blending(meta.blend_enabled)
-            .build(device)
+            .blending(meta.blend_enabled);
+
+        // Add descriptor sets for Text pipeline texture sampling
+        if *self == PipelineId::Text {
+            let bindings = vec![
+                vk::DescriptorSetLayoutBinding::default()
+                    .binding(0)
+                    .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                    .descriptor_count(1)
+                    .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+                vk::DescriptorSetLayoutBinding::default()
+                    .binding(1)
+                    .descriptor_type(vk::DescriptorType::SAMPLER)
+                    .descriptor_count(1)
+                    .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+            ];
+            
+            let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
+                .bindings(&bindings);
+            
+            let descriptor_set_layout = unsafe { device.create_descriptor_set_layout(&layout_info, None)? };
+            builder = builder.descriptor_set_layouts(vec![descriptor_set_layout]);
+        }
+
+        builder.build(device)
     }
 
     pub fn all() -> impl Iterator<Item = PipelineId> {

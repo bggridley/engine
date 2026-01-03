@@ -40,6 +40,15 @@ impl GUIComponent for ContainerPanel {
     fn transform_mut(&mut self) -> &mut Transform2D {
         &mut self.transform
     }
+
+    fn destroy(&self, device: &ash::Device) {
+        self.background.destroy(device);
+        for row in &self.grid.rows {
+            for component in &row.components {
+                component.destroy(device);
+            }
+        }
+    }
 }
 
 impl ContainerPanel {

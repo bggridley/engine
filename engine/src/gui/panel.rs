@@ -43,6 +43,10 @@ impl GUIComponent for PanelComponent {
     fn transform_mut(&mut self) -> &mut Transform2D {
         &mut self.transform
     }
+
+    fn destroy(&self, device: &ash::Device) {
+        self.mesh.destroy(device);
+    }
 }
 
 impl PanelComponent {

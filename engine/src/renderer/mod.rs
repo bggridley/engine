@@ -10,6 +10,8 @@ pub use command_pool::CommandPool;
 mod sync;
 pub use sync::FrameSynchronizer;
 
+mod buffer_utils;
+
 mod mesh;
 pub use mesh::{IndexBuffer, Mesh, PipelineBuilder, VertexBuffer};
 

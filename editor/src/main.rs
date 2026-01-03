@@ -30,7 +30,13 @@ fn main() -> Result<()> {
     );
 
     let context = Arc::new(VulkanContext::new(window.clone())?);
-    let mut renderer = Renderer::new(context.clone(), window_size.width, window_size.height)?;
+    let mut renderer = Some(Renderer::new(context.clone(), window_size.width, window_size.height)?);
+
+    // Get the shared descriptor_set_layout for text rendering from the pipeline manager
+    // This avoids creating redundant layouts - all TextComponents share this one layout
+    let text_descriptor_layout = renderer.as_ref().unwrap()
+        .get_descriptor_set_layout(engine::renderer::PipelineId::Text)
+        .expect("Text pipeline should have descriptor_set_layout");
 
     // Load font atlas at exact target font size
     let font_atlas: Arc<FontAtlas> = Arc::new(FontAtlas::load(
@@ -66,16 +72,16 @@ fn main() -> Result<()> {
 
     // Create ECS buttons with text
     let mut ecs_button1 = ButtonComponent::new(&context)?;
-    ecs_button1.set_text(TextComponent::new("FPS: 0.0", font_atlas.clone(), 18.5, &context)?);
+    ecs_button1.set_text(TextComponent::new("FPS: 0.0", font_atlas.clone(), 18.5, text_descriptor_layout, &context)?);
     
     // Wrap FPS button in Arc<RefCell> so we can update it from the event loop
     let fps_button = Arc::new(RefCell::new(ecs_button1));
 
     let mut ecs_button2 = ButtonComponent::new(&context)?;
-    ecs_button2.set_text(TextComponent::new("Entity 2", font_atlas.clone(), 18.5, &context)?);
+    ecs_button2.set_text(TextComponent::new("Entity 2", font_atlas.clone(), 18.5, text_descriptor_layout, &context)?);
 
     let mut ecs_button3 = ButtonComponent::new(&context)?;
-    ecs_button3.set_text(TextComponent::new("Entity 3", font_atlas.clone(), 18.5, &context)?);
+    ecs_button3.set_text(TextComponent::new("Entity 3", font_atlas.clone(), 18.5, text_descriptor_layout, &context)?);
 
     // Add buttons to sidebar rows (one button per row, takes full width of that row)
     let button_spec = LayoutSpec::new(SizeSpec::Percent(1.0), SizeSpec::Fixed(30.0))
@@ -109,6 +115,9 @@ fn main() -> Result<()> {
         }
         fn handle_mouse_move(&mut self, x: f32, y: f32) {
             self.button.borrow_mut().handle_mouse_move(x, y);
+        }
+        fn destroy(&self, device: &ash::Device) {
+            self.button.borrow().destroy(device);
         }
     }
     
@@ -157,10 +166,13 @@ fn main() -> Result<()> {
         fn handle_mouse_move(&mut self, x: f32, y: f32) {
             self.container.borrow_mut().handle_mouse_move(x, y);
         }
+        fn destroy(&self, device: &ash::Device) {
+            self.container.borrow().destroy(device);
+        }
     }
     
     let container_arc = Arc::new(left_container);
-    let mut wrapper = ContainerWrapper {
+    let wrapper = ContainerWrapper {
         container: container_arc.clone(),
         cached_transform: Transform2D::new(),
     };
@@ -200,9 +212,15 @@ fn main() -> Result<()> {
                 ..
             } => match window_event {
                 WindowEvent::CloseRequested => {
+                    // Clean up GPU resources in proper order before exiting
+                    unsafe { context.device.device_wait_idle().ok(); }
+                    ui.destroy(&context.device);
+                    font_atlas.destroy(&context.device);
+                    if let Some(r) = renderer.take() {
+                        drop(r);
+                    }
                     window_target.exit();
                 }
-
                 WindowEvent::Resized(new_size) => {
                     last_resize_size = Some((new_size.width, new_size.height));
                     window.request_redraw();
@@ -231,7 +249,9 @@ fn main() -> Result<()> {
                 WindowEvent::RedrawRequested => {
                     // Handle resize
                     if let Some((width, height)) = last_resize_size.take() {
-                        renderer.handle_resize(width, height, window.scale_factor() as f32);
+                        if let Some(ref mut r) = renderer {
+                            r.handle_resize(width, height, window.scale_factor() as f32);
+                        }
                         ui.grid.set_bounds(0.0, 0.0, width as f32, height as f32);
                         container_arc.borrow_mut().update_grid_layout();
                     }
@@ -250,12 +270,14 @@ fn main() -> Result<()> {
                     }
 
                     // Begin frame and render
-                    if let Some(frame) = renderer.begin_frame() {
-                        ui.render(&frame.render_ctx, &mut renderer).ok();
+                    if let Some(ref mut r) = renderer {
+                        if let Some(frame) = r.begin_frame() {
+                            ui.render(&frame.render_ctx, r).ok();
 
-                        frame_count += 1;
-                        if frame_count % 60 == 0 {
-                            println!("Frames: {} | FPS: {:.1}", frame_count, current_fps);
+                            frame_count += 1;
+                            if frame_count % 60 == 0 {
+                                println!("Frames: {} | FPS: {:.1}", frame_count, current_fps);
+                            }
                         }
                     }
                 }

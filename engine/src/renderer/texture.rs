@@ -10,6 +10,8 @@ use ash::vk::{
 };
 use std::sync::Arc;
 
+use super::buffer_utils::find_memory_type;
+
 /// Represents a GPU texture with its image and view
 pub struct Texture {
     pub image: Image,
@@ -308,29 +310,12 @@ impl Texture {
         )
     }
 
-    pub fn destroy(&self, device: &Arc<ash::Device>) {
+    /// Manually destroy Vulkan resources
+    pub fn destroy(&self, device: &ash::Device) {
         unsafe {
             device.destroy_image_view(self.image_view, None);
             device.destroy_image(self.image, None);
             device.free_memory(self.memory, None);
         }
     }
-}
-
-/// Find suitable memory type for allocation
-fn find_memory_type(
-    instance: &ash::Instance,
-    physical_device: ash::vk::PhysicalDevice,
-    mem_req: &ash::vk::MemoryRequirements,
-    properties: MemoryPropertyFlags,
-) -> Result<u32> {
-    let mem_props = unsafe { instance.get_physical_device_memory_properties(physical_device) };
-    for i in 0..mem_props.memory_type_count {
-        if (mem_req.memory_type_bits & (1 << i)) != 0
-            && (mem_props.memory_types[i as usize].property_flags & properties) == properties
-        {
-            return Ok(i);
-        }
-    }
-    Err(anyhow::anyhow!("No suitable memory type found"))
 }

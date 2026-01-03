@@ -55,7 +55,7 @@ impl PipelineId {
     }
 
     /// Build the pipeline from metadata
-    pub fn build(&self, device: &Arc<Device>) -> Result<(vk::Pipeline, vk::PipelineLayout)> {
+    pub fn build(&self, device: &Arc<Device>) -> Result<(vk::Pipeline, vk::PipelineLayout, Option<vk::DescriptorSetLayout>)> {
         let meta = self.meta();
         
         let vert_code = meta.vertex_shader.load_shader_bytes()?;
@@ -74,7 +74,7 @@ impl PipelineId {
             .blending(meta.blend_enabled);
 
         // Add descriptor sets for Text pipeline texture sampling
-        if *self == PipelineId::Text {
+        let descriptor_set_layout = if *self == PipelineId::Text {
             let bindings = vec![
                 vk::DescriptorSetLayoutBinding::default()
                     .binding(0)
@@ -91,11 +91,15 @@ impl PipelineId {
             let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
                 .bindings(&bindings);
             
-            let descriptor_set_layout = unsafe { device.create_descriptor_set_layout(&layout_info, None)? };
-            builder = builder.descriptor_set_layouts(vec![descriptor_set_layout]);
-        }
+            let layout = unsafe { device.create_descriptor_set_layout(&layout_info, None)? };
+            builder = builder.descriptor_set_layouts(vec![layout]);
+            Some(layout)
+        } else {
+            None
+        };
 
-        builder.build(device)
+        let (pipeline, layout) = builder.build(device)?;
+        Ok((pipeline, layout, descriptor_set_layout))
     }
 
     pub fn all() -> impl Iterator<Item = PipelineId> {
@@ -108,6 +112,7 @@ pub struct PipelineManager {
     device: Arc<Device>,
     pipelines: HashMap<PipelineId, vk::Pipeline>,
     layouts: HashMap<PipelineId, vk::PipelineLayout>,
+    descriptor_set_layouts: HashMap<PipelineId, vk::DescriptorSetLayout>,
 }
 
 impl PipelineManager {
@@ -116,6 +121,7 @@ impl PipelineManager {
             device,
             pipelines: HashMap::new(),
             layouts: HashMap::new(),
+            descriptor_set_layouts: HashMap::new(),
         }
     }
 
@@ -133,9 +139,12 @@ impl PipelineManager {
             return Ok(());
         }
 
-        let (pipeline, layout) = id.build(&self.device)?;
+        let (pipeline, layout, descriptor_set_layout) = id.build(&self.device)?;
         self.pipelines.insert(id, pipeline);
         self.layouts.insert(id, layout);
+        if let Some(dsl) = descriptor_set_layout {
+            self.descriptor_set_layouts.insert(id, dsl);
+        }
 
         Ok(())
     }
@@ -152,6 +161,12 @@ impl PipelineManager {
     pub fn get_layout(&self, id: PipelineId) -> Option<vk::PipelineLayout> {
         self.layouts.get(&id).copied()
     }
+
+    /// Get the descriptor_set_layout for a specific pipeline
+    /// This allows other systems (like SampledTexture) to reuse the same layout
+    pub fn get_descriptor_set_layout(&self, id: PipelineId) -> Option<vk::DescriptorSetLayout> {
+        self.descriptor_set_layouts.get(&id).copied()
+    }
 }
 
 impl Drop for PipelineManager {
@@ -164,6 +179,9 @@ impl Drop for PipelineManager {
             }
             for &layout in self.layouts.values() {
                 self.device.destroy_pipeline_layout(layout, None);
+            }
+            for &descriptor_set_layout in self.descriptor_set_layouts.values() {
+                self.device.destroy_descriptor_set_layout(descriptor_set_layout, None);
             }
         }
     }

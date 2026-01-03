@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 use std::cell::RefCell;
-use crate::renderer::{ColorVertex2D, Mesh, PipelineId, RenderContext, VertexBuffer, FontAtlas};
+use crate::renderer::{ColorVertex2D, Mesh, PipelineId, RenderContext, VertexBuffer};
 use crate::gui::{GUIComponent, Transform2D, TextComponent};
 
 use crate::renderer::PushConstants2D;
@@ -69,6 +69,13 @@ impl GUIComponent for ButtonComponent {
     
     fn transform_mut(&mut self) -> &mut Transform2D {
         &mut self.transform
+    }
+
+    fn destroy(&self, device: &ash::Device) {
+        self.mesh.destroy(device);
+        if let Some(text_cell) = &self.text {
+            text_cell.borrow().destroy(device);
+        }
     }
 }
 

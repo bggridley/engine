@@ -63,6 +63,8 @@ pub trait GUIComponent {
     fn handle_mouse_down(&mut self, x: f32, y: f32);
     fn handle_mouse_up(&mut self, x: f32, y: f32);
     fn handle_mouse_move(&mut self, x: f32, y: f32);
+    /// Manually destroy Vulkan resources
+    fn destroy(&self, device: &ash::Device);
 }
 
 
@@ -73,9 +75,6 @@ pub trait GUIComponent {
 pub struct UISystem {
     pub grid: Grid,
 }
-
-#[derive(Clone, Copy)]
-pub struct ComponentHandle(usize);
 
 impl UISystem {
     pub fn new() -> Self {
@@ -105,6 +104,15 @@ impl UISystem {
         // This is a placeholder - the real implementation would require
         // the ability to downcast components to ContainerPanel
         // For now, containers will need to be updated manually
+    }
+
+    /// Manually destroy all GUI resources
+    pub fn destroy(&self, device: &ash::Device) {
+        for row in &self.grid.rows {
+            for component in &row.components {
+                component.destroy(device);
+            }
+        }
     }
 }
 

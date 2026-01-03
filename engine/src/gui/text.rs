@@ -14,7 +14,6 @@ pub struct TextComponent {
     font_size: f32,
     mesh: Mesh<TexturedVertex2D>,
     sampled_texture: SampledTexture,
-    device: Arc<ash::Device>,
 }
 
 impl TextComponent {
@@ -74,8 +73,16 @@ impl TextComponent {
     }
     
     /// Create a new text component
-    pub fn new(text: &str, font_atlas: Arc<FontAtlas>, font_size: f32, context: &Arc<crate::renderer::VulkanContext>) -> Result<Self> {
-        let device = context.device.clone();
+    /// 
+    /// Requires the descriptor_set_layout from PipelineManager to avoid redundant layout creation.
+    /// Get it via: renderer.get_descriptor_set_layout(PipelineId::Text).unwrap()
+    pub fn new(
+        text: &str,
+        font_atlas: Arc<FontAtlas>,
+        font_size: f32,
+        descriptor_set_layout: vk::DescriptorSetLayout,
+        context: &Arc<crate::renderer::VulkanContext>,
+    ) -> Result<Self> {
         let vertices = Self::build_text_vertices(text, &font_atlas, font_size);
 
         let vertex_buffer = VertexBuffer::new(&context.device, context.physical_device, &context.instance, &vertices)?;
@@ -84,6 +91,7 @@ impl TextComponent {
         let sampled_texture = SampledTexture::new(
             &font_atlas.texture,
             SamplerConfig::linear(),
+            descriptor_set_layout,
             &context.device,
         )?;
 
@@ -95,7 +103,6 @@ impl TextComponent {
             font_size,
             mesh: Mesh::new(vertex_buffer),
             sampled_texture,
-            device: Arc::clone(&*context.device),
         })
     }
 
@@ -111,9 +118,17 @@ impl TextComponent {
             return Ok(());
         }
         
+        // Wait for GPU to finish using old mesh before destroying it
+        unsafe {
+            let _ = context.device.device_wait_idle();
+        }
+        
+        // Destroy old mesh before creating new one
+        self.mesh.destroy(&context.device);
+        
         self.text = text.to_string();
         let vertices = Self::build_text_vertices(text, &self.font_atlas, self.font_size);
-        let vertex_buffer = VertexBuffer::new(&self.device, context.physical_device, &context.instance, &vertices)?;
+        let vertex_buffer = VertexBuffer::new(&context.device, context.physical_device, &context.instance, &vertices)?;
         self.mesh = Mesh::new(vertex_buffer);
         Ok(())
     }
@@ -188,4 +203,10 @@ impl GUIComponent for TextComponent {
     fn handle_mouse_move(&mut self, _x: f32, _y: f32) {
         // Text doesn't handle input yet
     }
+
+    fn destroy(&self, device: &ash::Device) {
+        self.mesh.destroy(device);
+        self.sampled_texture.destroy(device);
+    }
 }
+

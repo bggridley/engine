@@ -83,7 +83,7 @@ impl Default for GridRow {
 
 /// A grid layout system for organizing components in rows
 pub struct Grid {
-    rows: Vec<GridRow>,
+    pub rows: Vec<GridRow>,
 }
 
 impl Grid {

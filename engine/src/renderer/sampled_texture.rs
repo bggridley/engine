@@ -6,12 +6,12 @@ use super::Texture;
 
 /// A texture with sampler and descriptor sets ready for shader use
 /// This encapsulates all the Vulkan boilerplate for texture sampling
+/// Note: Does not own the texture - caller must ensure texture outlives this
+/// Note: Does not own descriptor_set_layout - it's shared from PipelineManager
 pub struct SampledTexture {
     pub sampler: vk::Sampler,
     pub descriptor_pool: vk::DescriptorPool,
-    pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_set: vk::DescriptorSet,
-    device: Arc<ash::Device>,
 }
 
 /// Configuration for texture sampling
@@ -60,11 +60,14 @@ impl SampledTexture {
     /// 
     /// This sets up everything needed to use a texture in shaders:
     /// - Creates a sampler with the specified filtering
-    /// - Creates descriptor pool and layout
-    /// - Allocates and binds descriptor set
+    /// - Creates descriptor pool
+    /// - Allocates and binds descriptor set using shared descriptor_set_layout
+    /// 
+    /// The descriptor_set_layout is provided by PipelineManager to avoid redundancy
     pub fn new(
         texture: &Texture,
         config: SamplerConfig,
+        descriptor_set_layout: vk::DescriptorSetLayout,
         device: &Arc<ash::Device>,
     ) -> Result<Self> {
         unsafe {
@@ -106,28 +109,7 @@ impl SampledTexture {
 
             let descriptor_pool = device.create_descriptor_pool(&pool_info, None)?;
 
-            // Create descriptor set layout
-            // Binding 0: SAMPLED_IMAGE (the texture)
-            // Binding 1: SAMPLER (the sampling settings)
-            let bindings = [
-                vk::DescriptorSetLayoutBinding::default()
-                    .binding(0)
-                    .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                    .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::FRAGMENT),
-                vk::DescriptorSetLayoutBinding::default()
-                    .binding(1)
-                    .descriptor_type(vk::DescriptorType::SAMPLER)
-                    .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::FRAGMENT),
-            ];
-            
-            let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
-                .bindings(&bindings);
-            
-            let descriptor_set_layout = device.create_descriptor_set_layout(&layout_info, None)?;
-
-            // Allocate descriptor set
+            // Allocate descriptor set using the shared descriptor_set_layout
             let layouts = [descriptor_set_layout];
             let alloc_info = vk::DescriptorSetAllocateInfo::default()
                 .descriptor_pool(descriptor_pool)
@@ -163,25 +145,17 @@ impl SampledTexture {
             Ok(SampledTexture {
                 sampler,
                 descriptor_pool,
-                descriptor_set_layout,
                 descriptor_set,
-                device: Arc::clone(device),
             })
         }
     }
 
-    /// Destroy all Vulkan resources
-    pub fn destroy(&self) {
+    /// Manually destroy Vulkan resources
+    /// Note: Does NOT destroy descriptor_set_layout - that's owned by PipelineManager
+    pub fn destroy(&self, device: &ash::Device) {
         unsafe {
-            self.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
-            self.device.destroy_descriptor_pool(self.descriptor_pool, None);
-            self.device.destroy_sampler(self.sampler, None);
+            device.destroy_descriptor_pool(self.descriptor_pool, None);
+            device.destroy_sampler(self.sampler, None);
         }
-    }
-}
-
-impl Drop for SampledTexture {
-    fn drop(&mut self) {
-        self.destroy();
     }
 }

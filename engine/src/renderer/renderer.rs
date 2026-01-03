@@ -290,7 +290,7 @@ impl Renderer {
         })
     }
 
-    pub fn handle_resize(&mut self, width: u32, height: u32, scale_factor: f32) {
+    pub fn handle_resize(&mut self, width: u32, height: u32, _scale_factor: f32) {
         // Only recreate if size actually changed
 
         // not sure if keeping this out of the if statement will lead to unexpected behavior down the road
@@ -421,6 +421,12 @@ impl Renderer {
 
     pub fn get_pipeline_layout(&self, id: crate::renderer::PipelineId) -> Option<vk::PipelineLayout> {
         self.pipeline_manager.get_layout(id)
+    }
+
+    /// Get the descriptor_set_layout for a pipeline
+    /// Used by components like TextComponent to create SampledTextures with shared layout
+    pub fn get_descriptor_set_layout(&self, id: crate::renderer::PipelineId) -> Option<vk::DescriptorSetLayout> {
+        self.pipeline_manager.get_descriptor_set_layout(id)
     }
 }
 

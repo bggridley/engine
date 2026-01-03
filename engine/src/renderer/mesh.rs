@@ -2,12 +2,13 @@ use anyhow::Result;
 use ash::vk;
 use std::sync::Arc;
 
+use super::buffer_utils::create_buffer_with_data;
+
 /// Generic vertex buffer that can hold any vertex type
 pub struct VertexBuffer<V> {
     pub buffer: vk::Buffer,
     pub memory: vk::DeviceMemory,
     pub vertex_count: u32,
-    device: Arc<ash::Device>,
     _phantom: std::marker::PhantomData<V>,
 }
 
@@ -19,67 +20,27 @@ impl<V> VertexBuffer<V> {
         instance: &ash::Instance,
         vertices: &[V],
     ) -> Result<Self> {
-        let buffer_size = std::mem::size_of_val(vertices) as vk::DeviceSize;
-        
-        let buffer_info = vk::BufferCreateInfo::default()
-            .size(buffer_size)
-            .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-
-        let buffer = unsafe { device.create_buffer(&buffer_info, None)? };
-
-        let mem_requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
-
-        // Find suitable memory type
-        let mem_type_index = find_memory_type(
-            instance,
+        let (buffer, memory) = create_buffer_with_data(
+            device,
             physical_device,
-            &mem_requirements,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            instance,
+            vertices,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
         )?;
-
-        let alloc_info = vk::MemoryAllocateInfo::default()
-            .allocation_size(mem_requirements.size)
-            .memory_type_index(mem_type_index);
-
-        let memory = unsafe { device.allocate_memory(&alloc_info, None)? };
-
-        unsafe {
-            device.bind_buffer_memory(buffer, memory, 0)?;
-        }
-
-        // Copy vertex data to buffer
-        unsafe {
-            let data_ptr = device.map_memory(
-                memory,
-                0,
-                mem_requirements.size,
-                vk::MemoryMapFlags::empty(),
-            )?;
-            std::ptr::copy_nonoverlapping(
-                vertices.as_ptr() as *const u8,
-                data_ptr as *mut u8,
-                std::mem::size_of_val(vertices),
-            );
-            device.unmap_memory(memory);
-        }
 
         Ok(VertexBuffer {
             buffer,
             memory,
             vertex_count: vertices.len() as u32,
-            device: device.clone(),
             _phantom: std::marker::PhantomData,
         })
     }
-}
 
-impl<V> Drop for VertexBuffer<V> {
-    fn drop(&mut self) {
+    /// Manually destroy Vulkan resources
+    pub fn destroy(&self, device: &ash::Device) {
         unsafe {
-            let _ = self.device.device_wait_idle();
-            self.device.destroy_buffer(self.buffer, None);
-            self.device.free_memory(self.memory, None);
+            device.destroy_buffer(self.buffer, None);
+            device.free_memory(self.memory, None);
         }
     }
 }
@@ -89,7 +50,6 @@ pub struct IndexBuffer {
     pub buffer: vk::Buffer,
     pub memory: vk::DeviceMemory,
     pub index_count: u32,
-    device: Arc<ash::Device>,
 }
 
 impl IndexBuffer {
@@ -99,64 +59,26 @@ impl IndexBuffer {
         instance: &ash::Instance,
         indices: &[u32],
     ) -> Result<Self> {
-        let buffer_size = std::mem::size_of_val(indices) as vk::DeviceSize;
-        
-        let buffer_info = vk::BufferCreateInfo::default()
-            .size(buffer_size)
-            .usage(vk::BufferUsageFlags::INDEX_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-
-        let buffer = unsafe { device.create_buffer(&buffer_info, None)? };
-
-        let mem_requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
-
-        let mem_type_index = find_memory_type(
-            instance,
+        let (buffer, memory) = create_buffer_with_data(
+            device,
             physical_device,
-            &mem_requirements,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            instance,
+            indices,
+            vk::BufferUsageFlags::INDEX_BUFFER,
         )?;
-
-        let alloc_info = vk::MemoryAllocateInfo::default()
-            .allocation_size(mem_requirements.size)
-            .memory_type_index(mem_type_index);
-
-        let memory = unsafe { device.allocate_memory(&alloc_info, None)? };
-
-        unsafe {
-            device.bind_buffer_memory(buffer, memory, 0)?;
-        }
-
-        unsafe {
-            let data_ptr = device.map_memory(
-                memory,
-                0,
-                mem_requirements.size,
-                vk::MemoryMapFlags::empty(),
-            )?;
-            std::ptr::copy_nonoverlapping(
-                indices.as_ptr() as *const u8,
-                data_ptr as *mut u8,
-                std::mem::size_of_val(indices),
-            );
-            device.unmap_memory(memory);
-        }
 
         Ok(IndexBuffer {
             buffer,
             memory,
             index_count: indices.len() as u32,
-            device: device.clone(),
         })
     }
-}
 
-impl Drop for IndexBuffer {
-    fn drop(&mut self) {
+    /// Manually destroy Vulkan resources
+    pub fn destroy(&self, device: &ash::Device) {
         unsafe {
-            let _ = self.device.device_wait_idle();
-            self.device.destroy_buffer(self.buffer, None);
-            self.device.free_memory(self.memory, None);
+            device.destroy_buffer(self.buffer, None);
+            device.free_memory(self.memory, None);
         }
     }
 }
@@ -388,27 +310,14 @@ impl<V> Mesh<V> {
         
         Ok(())
     }
-}
 
-fn find_memory_type(
-    instance: &ash::Instance,
-    physical_device: vk::PhysicalDevice,
-    requirements: &vk::MemoryRequirements,
-    required_properties: vk::MemoryPropertyFlags,
-) -> Result<u32> {
-    let mem_properties = unsafe {
-        instance.get_physical_device_memory_properties(physical_device)
-    };
-
-    for i in 0..mem_properties.memory_type_count {
-        if requirements.memory_type_bits & (1 << i) != 0
-            && mem_properties.memory_types[i as usize]
-                .property_flags
-                .contains(required_properties)
-        {
-            return Ok(i);
+    /// Manually destroy Vulkan resources
+    pub fn destroy(&self, device: &ash::Device) {
+        self.vertex_buffer.destroy(device);
+        if let Some(ref index_buffer) = self.index_buffer {
+            index_buffer.destroy(device);
         }
     }
-
-    Err(anyhow::anyhow!("Failed to find suitable memory type"))
 }
+
+

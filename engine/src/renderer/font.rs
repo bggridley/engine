@@ -147,4 +147,9 @@ impl FontAtlas {
     pub fn get_glyph(&self, ch: char) -> Option<&GlyphMetrics> {
         self.glyph_map.get(&ch)
     }
+
+    /// Manually destroy Vulkan resources
+    pub fn destroy(&self, device: &ash::Device) {
+        self.texture.destroy(device);
+    }
 }

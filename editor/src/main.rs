@@ -32,9 +32,10 @@ fn main() -> Result<()> {
     let context = Arc::new(VulkanContext::new(window.clone())?);
     let mut renderer = Renderer::new(context.clone(), window_size.width, window_size.height)?;
 
-    // Load font atlas
-    let font_atlas = Arc::new(FontAtlas::load(
-        "./assets/Lato-Regular.ttf",
+    // Load font atlas at exact target font size
+    let font_atlas: Arc<FontAtlas> = Arc::new(FontAtlas::load(
+        "./assets/FiraCode.ttf",
+        18.0,  // Target font size for pixel-perfect rendering
         &context.device,
         &context.instance,
         context.physical_device,

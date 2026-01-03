@@ -31,6 +31,7 @@ const CHARS_TO_RASTERIZE: &str =
 impl FontAtlas {
     pub fn load(
         path: &str,
+        font_size: f32,
         device: &Arc<ash::Device>,
         instance: &ash::Instance,
         physical_device: ash::vk::PhysicalDevice,
@@ -41,7 +42,9 @@ impl FontAtlas {
         let font = Font::try_from_vec(font_data)
             .ok_or_else(|| anyhow::anyhow!("Invalid font file format"))?;
 
-        let height: f32 = 64.0;
+        // Rasterize at 2x target size for good antialiasing, then scale down 2x for crisp rendering
+        // This preserves font hinting better than large scale factors
+        let height: f32 = font_size * 2.0;
         let scale = Scale {
             x: height,
             y: height,

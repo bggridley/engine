@@ -25,7 +25,8 @@ impl TextComponent {
         
         // Build vertices for the text
         let mut vertices = Vec::new();
-        let scale = font_size / 64.0;  // FontAtlas rasterized at 64px
+        // Atlas is rasterized at 2x font_size for antialiasing, scale down by 0.5
+        let scale = 0.5;
         
         // First pass: calculate total width for centering
         let total_width: f32 = text.chars().filter_map(|ch| {

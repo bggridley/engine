@@ -19,64 +19,65 @@ pub struct TextComponent {
 }
 
 impl TextComponent {
-    /// Create a new text component
-    pub fn new(text: &str, font_atlas: Arc<FontAtlas>, font_size: f32, context: &Arc<crate::renderer::VulkanContext>) -> Result<Self> {
-        let device = context.device.clone();
-        
-        // Build vertices for the text
+    /// Helper function to build text vertices
+    fn build_text_vertices(text: &str, font_atlas: &FontAtlas, font_size: f32) -> Vec<TexturedVertex2D> {
         let mut vertices = Vec::new();
-        // Atlas is rasterized at 2x font_size for antialiasing, scale down by 0.5
-        let scale = 0.5;
+        let scale = 0.5;  // Atlas is at 2x font_size
         
-        // First pass: calculate total width for centering
         let total_width: f32 = text.chars().filter_map(|ch| {
             font_atlas.get_glyph(ch).map(|g| g.advance_width * scale)
         }).sum();
 
-        let start_x = -total_width / 2.0;  // Center horizontally around origin
-        let baseline_y = font_size * 0.25;  // Baseline positioned slightly below center
+        let start_x = -total_width / 2.0;
+        let baseline_y = font_size * 0.25;
         let mut x = start_x;
 
         for ch in text.chars() {
             if let Some(glyph) = font_atlas.get_glyph(ch) {
                 let width = glyph.width * scale;
                 let height = glyph.height * scale;
-                let bearing_y = glyph.bearing_y * scale;
                 
-                // Y position: baseline minus the bearing (distance from baseline to top of glyph)
-                let y = baseline_y - bearing_y;
+                if width > 0.0 && height > 0.0 {
+                    let bearing_y = glyph.bearing_y * scale;
+                    let y = baseline_y - bearing_y;
 
-                // First triangle
-                vertices.push(TexturedVertex2D {
-                    position: [x, y],
-                    uv: [glyph.uv_min.x, glyph.uv_min.y],
-                });
-                vertices.push(TexturedVertex2D {
-                    position: [x + width, y],
-                    uv: [glyph.uv_max.x, glyph.uv_min.y],
-                });
-                vertices.push(TexturedVertex2D {
-                    position: [x, y + height],
-                    uv: [glyph.uv_min.x, glyph.uv_max.y],
-                });
-
-                // Second triangle
-                vertices.push(TexturedVertex2D {
-                    position: [x + width, y],
-                    uv: [glyph.uv_max.x, glyph.uv_min.y],
-                });
-                vertices.push(TexturedVertex2D {
-                    position: [x + width, y + height],
-                    uv: [glyph.uv_max.x, glyph.uv_max.y],
-                });
-                vertices.push(TexturedVertex2D {
-                    position: [x, y + height],
-                    uv: [glyph.uv_min.x, glyph.uv_max.y],
-                });
+                    vertices.push(TexturedVertex2D {
+                        position: [x, y],
+                        uv: [glyph.uv_min.x, glyph.uv_min.y],
+                    });
+                    vertices.push(TexturedVertex2D {
+                        position: [x + width, y],
+                        uv: [glyph.uv_max.x, glyph.uv_min.y],
+                    });
+                    vertices.push(TexturedVertex2D {
+                        position: [x, y + height],
+                        uv: [glyph.uv_min.x, glyph.uv_max.y],
+                    });
+                    vertices.push(TexturedVertex2D {
+                        position: [x + width, y],
+                        uv: [glyph.uv_max.x, glyph.uv_min.y],
+                    });
+                    vertices.push(TexturedVertex2D {
+                        position: [x + width, y + height],
+                        uv: [glyph.uv_max.x, glyph.uv_max.y],
+                    });
+                    vertices.push(TexturedVertex2D {
+                        position: [x, y + height],
+                        uv: [glyph.uv_min.x, glyph.uv_max.y],
+                    });
+                }
 
                 x += glyph.advance_width * scale;
             }
         }
+        
+        vertices
+    }
+    
+    /// Create a new text component
+    pub fn new(text: &str, font_atlas: Arc<FontAtlas>, font_size: f32, context: &Arc<crate::renderer::VulkanContext>) -> Result<Self> {
+        let device = context.device.clone();
+        let vertices = Self::build_text_vertices(text, &font_atlas, font_size);
 
         let vertex_buffer = VertexBuffer::new(&context.device, context.physical_device, &context.instance, &vertices)?;
 
@@ -190,10 +191,18 @@ impl TextComponent {
         self.color = color;
     }
 
-    /// Update the text content
-    pub fn set_text(&mut self, text: &str) {
+    /// Update the text content and rebuild mesh
+    pub fn update_text(&mut self, text: &str, context: &Arc<crate::renderer::VulkanContext>) -> Result<()> {
+        // Only rebuild if text actually changed
+        if self.text == text {
+            return Ok(());
+        }
+        
         self.text = text.to_string();
-        // TODO: Rebuild mesh when text changes
+        let vertices = Self::build_text_vertices(text, &self.font_atlas, self.font_size);
+        let vertex_buffer = VertexBuffer::new(&self.device, context.physical_device, &context.instance, &vertices)?;
+        self.mesh = Mesh::new(vertex_buffer);
+        Ok(())
     }
 
     /// Get the width of the current text at the given font size

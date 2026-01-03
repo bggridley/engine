@@ -88,28 +88,44 @@ impl FontAtlas {
         let glyph_map = glyphs
             .iter()
             .zip(CHARS_TO_RASTERIZE.chars())
-            .filter_map(|(g, ch)| {
-                // Skip glyphs without bounding boxes (e.g., space)
-                let bb = g.pixel_bounding_box()?;
-                let width = (bb.max.x - bb.min.x) as f32;
-                let height = (bb.max.y - bb.min.y) as f32;
-                Some((
-                    ch,
-                    GlyphMetrics {
-                        uv_min: Vec2::new(
-                            bb.min.x as f32 / texture_width as f32,
-                            (texture_height as i32 - bb.max.y) as f32 / texture_height as f32,
-                        ),
-                        uv_max: Vec2::new(
-                            bb.max.x as f32 / texture_width as f32,
-                            (texture_height as i32 - bb.min.y) as f32 / texture_height as f32,
-                        ),
-                        advance_width: g.unpositioned().h_metrics().advance_width,
-                        bearing_y: bb.max.y as f32,
-                        width,
-                        height,
-                    },
-                ))
+            .map(|(g, ch)| {
+                let advance_width = g.unpositioned().h_metrics().advance_width;
+                
+                // Handle glyphs without bounding boxes (e.g., space)
+                if let Some(bb) = g.pixel_bounding_box() {
+                    let width = (bb.max.x - bb.min.x) as f32;
+                    let height = (bb.max.y - bb.min.y) as f32;
+                    (
+                        ch,
+                        GlyphMetrics {
+                            uv_min: Vec2::new(
+                                bb.min.x as f32 / texture_width as f32,
+                                (texture_height as i32 - bb.max.y) as f32 / texture_height as f32,
+                            ),
+                            uv_max: Vec2::new(
+                                bb.max.x as f32 / texture_width as f32,
+                                (texture_height as i32 - bb.min.y) as f32 / texture_height as f32,
+                            ),
+                            advance_width,
+                            bearing_y: bb.max.y as f32,
+                            width,
+                            height,
+                        },
+                    )
+                } else {
+                    // For invisible characters like space, just store advance width
+                    (
+                        ch,
+                        GlyphMetrics {
+                            uv_min: Vec2::ZERO,
+                            uv_max: Vec2::ZERO,
+                            advance_width,
+                            bearing_y: 0.0,
+                            width: 0.0,
+                            height: 0.0,
+                        },
+                    )
+                }
             })
             .collect();
 

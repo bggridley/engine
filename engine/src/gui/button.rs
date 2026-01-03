@@ -121,4 +121,12 @@ impl ButtonComponent {
     pub fn set_text(&mut self, text: TextComponent) {
         self.text = Some(RefCell::new(text));
     }
+    
+    /// Update the button text content
+    pub fn update_text(&mut self, new_text: &str, context: &Arc<crate::renderer::VulkanContext>) -> Result<()> {
+        if let Some(text_cell) = &self.text {
+            text_cell.borrow_mut().update_text(new_text, context)?;
+        }
+        Ok(())
+    }
 }

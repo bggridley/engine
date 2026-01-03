@@ -34,13 +34,15 @@ fn main() -> Result<()> {
 
     // Load font atlas at exact target font size
     let font_atlas: Arc<FontAtlas> = Arc::new(FontAtlas::load(
-        "./assets/FiraCode.ttf",
-        18.0,  // Target font size for pixel-perfect rendering
+        "./assets/Inter.ttf",
+        18.5,  // Target font size for pixel-perfect rendering
         &context.device,
         &context.instance,
         context.physical_device,
         context.queue_family_indices[0],
     )?);
+
+    //Entity1thisissometext
 
     let mut ui = UISystem::new();
 
@@ -64,13 +66,16 @@ fn main() -> Result<()> {
 
     // Create ECS buttons with text
     let mut ecs_button1 = ButtonComponent::new(&context)?;
-    ecs_button1.set_text(TextComponent::new("Entity 1 this is some text", font_atlas.clone(), 16.0, &context)?);
+    ecs_button1.set_text(TextComponent::new("FPS: 0.0", font_atlas.clone(), 18.5, &context)?);
+    
+    // Wrap FPS button in Arc<RefCell> so we can update it from the event loop
+    let fps_button = Arc::new(RefCell::new(ecs_button1));
 
     let mut ecs_button2 = ButtonComponent::new(&context)?;
-    ecs_button2.set_text(TextComponent::new("Entity 2", font_atlas.clone(), 16.0, &context)?);
+    ecs_button2.set_text(TextComponent::new("Entity 2", font_atlas.clone(), 18.5, &context)?);
 
     let mut ecs_button3 = ButtonComponent::new(&context)?;
-    ecs_button3.set_text(TextComponent::new("Entity 3", font_atlas.clone(), 16.0, &context)?);
+    ecs_button3.set_text(TextComponent::new("Entity 3", font_atlas.clone(), 18.5, &context)?);
 
     // Add buttons to sidebar rows (one button per row, takes full width of that row)
     let button_spec = LayoutSpec::new(SizeSpec::Percent(1.0), SizeSpec::Fixed(30.0))
@@ -78,8 +83,41 @@ fn main() -> Result<()> {
         .with_padding(0.0)
         .with_margin(0.0);
 
-
-    left_container.grid_mut().get_row_mut(sidebar_row1).unwrap().add_component(Box::new(ecs_button1), button_spec);
+    // Create a wrapper for the FPS button
+    struct ButtonWrapper {
+        button: Arc<RefCell<ButtonComponent>>,
+        cached_transform: Transform2D,
+    }
+    
+    impl GUIComponent for ButtonWrapper {
+        fn render(&self, ctx: &RenderContext, renderer: &mut Renderer) -> Result<()> {
+            let mut button = self.button.borrow_mut();
+            *button.transform_mut() = self.cached_transform;
+            button.render(ctx, renderer)
+        }
+        fn transform(&self) -> &Transform2D {
+            &self.cached_transform
+        }
+        fn transform_mut(&mut self) -> &mut Transform2D {
+            &mut self.cached_transform
+        }
+        fn handle_mouse_down(&mut self, x: f32, y: f32) {
+            self.button.borrow_mut().handle_mouse_down(x, y);
+        }
+        fn handle_mouse_up(&mut self, x: f32, y: f32) {
+            self.button.borrow_mut().handle_mouse_up(x, y);
+        }
+        fn handle_mouse_move(&mut self, x: f32, y: f32) {
+            self.button.borrow_mut().handle_mouse_move(x, y);
+        }
+    }
+    
+    let fps_button_wrapper = ButtonWrapper {
+        button: fps_button.clone(),
+        cached_transform: Transform2D::new(),
+    };
+        
+    left_container.grid_mut().get_row_mut(sidebar_row1).unwrap().add_component(Box::new(fps_button_wrapper), button_spec);
     left_container.grid_mut().get_row_mut(sidebar_row2).unwrap().add_component(Box::new(ecs_button2), button_spec);
     left_container.grid_mut().get_row_mut(sidebar_row3).unwrap().add_component(Box::new(ecs_button3), button_spec);
 
@@ -149,6 +187,11 @@ fn main() -> Result<()> {
     let mut frame_count = 0u32;
     let mut last_resize_size: Option<(u32, u32)> = None;
     let mut mouse_pos = (0.0f32, 0.0f32);
+    
+    // FPS tracking
+    let mut last_fps_update = std::time::Instant::now();
+    let mut fps_frame_count = 0u32;
+    let mut current_fps = 0.0f32;
 
     event_loop.run(move |event, window_target| {
         match event {
@@ -162,6 +205,7 @@ fn main() -> Result<()> {
 
                 WindowEvent::Resized(new_size) => {
                     last_resize_size = Some((new_size.width, new_size.height));
+                    window.request_redraw();
                 }
 
                 WindowEvent::CursorMoved { position, .. } => {
@@ -169,15 +213,18 @@ fn main() -> Result<()> {
                     let inverted_y = window_size.height as f32 - position.y as f32;
                     mouse_pos = (position.x as f32, inverted_y);
                     ui.handle_mouse_move(position.x as f32, inverted_y);
+                    window.request_redraw();
                 }
 
                 WindowEvent::MouseInput { state, .. } => match state {
                     winit::event::ElementState::Pressed => {
                         ui.handle_mouse_down(mouse_pos.0, mouse_pos.1);
+                        window.request_redraw();
                     }
 
                     winit::event::ElementState::Released => {
                         ui.handle_mouse_up(mouse_pos.0, mouse_pos.1);
+                        window.request_redraw();
                     }
                 },
 
@@ -188,6 +235,19 @@ fn main() -> Result<()> {
                         ui.grid.set_bounds(0.0, 0.0, width as f32, height as f32);
                         container_arc.borrow_mut().update_grid_layout();
                     }
+                    
+                    // Update FPS counter
+                    fps_frame_count += 1;
+                    let elapsed = last_fps_update.elapsed();
+                    if elapsed.as_secs_f32() >= 0.5 {
+                        current_fps = fps_frame_count as f32 / elapsed.as_secs_f32();
+                        fps_frame_count = 0;
+                        last_fps_update = std::time::Instant::now();
+                        
+                        // Update FPS button text
+                        let fps_text = format!("FPS: {:.1}", current_fps);
+                        fps_button.borrow_mut().update_text(&fps_text, &context).ok();
+                    }
 
                     // Begin frame and render
                     if let Some(frame) = renderer.begin_frame() {
@@ -195,15 +255,18 @@ fn main() -> Result<()> {
 
                         frame_count += 1;
                         if frame_count % 60 == 0 {
-                            println!("Frames: {}", frame_count);
+                            println!("Frames: {} | FPS: {:.1}", frame_count, current_fps);
                         }
                     }
                 }
                 _ => {}
             },
-            Event::AboutToWait => {
-                window.request_redraw();
-            }
+
+            //Event::AboutToWait => {
+            //    window.request_redraw();
+            //}            
+            // Remove continuous rendering - only redraw on demand
+            // Later: add a flag here for continuous mode when game preview is active
             _ => {}
         }
     })?;

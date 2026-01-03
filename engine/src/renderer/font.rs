@@ -73,7 +73,7 @@ impl FontAtlas {
             if let Some(bb) = glyph.pixel_bounding_box() {
                 glyph.draw(|x, y, v| {
                     let px = (bb.min.x + x as i32) as usize;
-                    let py = (bb.min.y + y as i32) as usize;
+                    let py = (texture_height as i32 - 1 - (bb.min.y + y as i32)) as usize;
                     if px < texture_width && py < texture_height {
                         pixels[py * texture_width + px] = (v * 255.0) as u8;
                     }
@@ -95,11 +95,11 @@ impl FontAtlas {
                     GlyphMetrics {
                         uv_min: Vec2::new(
                             bb.min.x as f32 / texture_width as f32,
-                            bb.min.y as f32 / texture_height as f32,
+                            (texture_height as i32 - bb.max.y) as f32 / texture_height as f32,
                         ),
                         uv_max: Vec2::new(
                             bb.max.x as f32 / texture_width as f32,
-                            bb.max.y as f32 / texture_height as f32,
+                            (texture_height as i32 - bb.min.y) as f32 / texture_height as f32,
                         ),
                         advance_width: g.unpositioned().h_metrics().advance_width,
                         bearing_y: bb.max.y as f32,

@@ -25,6 +25,9 @@ pub use shader_manager::{ShaderManager, ShaderId};
 mod font;
 pub use font::FontAtlas;
 
+mod texture;
+pub use texture::Texture;
+
 mod renderer;
 pub use renderer::{RenderContext, Renderer};
 // pub use font::{Font, FontManager};

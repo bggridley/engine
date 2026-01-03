@@ -151,7 +151,7 @@ impl TextComponent {
         // Write descriptor set
         let image_info = [vk::DescriptorImageInfo::default()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(font_atlas.texture_view)];
+            .image_view(font_atlas.texture.image_view)];
 
         let sampler_info_write = [vk::DescriptorImageInfo::default()
             .sampler(sampler)];

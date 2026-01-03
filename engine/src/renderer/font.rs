@@ -12,11 +12,13 @@ pub struct FontAtlas {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct GlyphMetrics {
+pub struct GlyphMetrics {
     pub uv_min: Vec2,
     pub uv_max: Vec2,
     pub advance_width: f32,
     pub bearing_y: f32,
+    pub width: f32,   // Pixel width in the rasterized texture
+    pub height: f32,  // Pixel height in the rasterized texture
 }
 
 const CHARS_TO_RASTERIZE: &str =
@@ -29,8 +31,10 @@ impl FontAtlas {
         instance: &ash::Instance,
         physical_device: ash::vk::PhysicalDevice,
     ) -> Result<Self> {
-        let font_data = std::fs::read(path)?;
-        let font = Font::try_from_vec(font_data).unwrap();
+        let font_data = std::fs::read(path)
+            .map_err(|e| anyhow::anyhow!("Failed to load font file '{}': {}", path, e))?;
+        let font = Font::try_from_vec(font_data)
+            .ok_or_else(|| anyhow::anyhow!("Invalid font file format"))?;
 
         let height: f32 = 128.0;
         let scale = Scale {
@@ -76,9 +80,12 @@ impl FontAtlas {
         let glyph_map = glyphs
             .iter()
             .zip(CHARS_TO_RASTERIZE.chars())
-            .map(|(g, ch)| {
-                let bb = g.pixel_bounding_box().unwrap();
-                (
+            .filter_map(|(g, ch)| {
+                // Skip glyphs without bounding boxes (e.g., space)
+                let bb = g.pixel_bounding_box()?;
+                let width = (bb.max.x - bb.min.x) as f32;
+                let height = (bb.max.y - bb.min.y) as f32;
+                Some((
                     ch,
                     GlyphMetrics {
                         uv_min: Vec2::new(
@@ -91,8 +98,10 @@ impl FontAtlas {
                         ),
                         advance_width: g.unpositioned().h_metrics().advance_width,
                         bearing_y: bb.max.y as f32,
+                        width,
+                        height,
                     },
-                )
+                ))
             })
             .collect();
 
@@ -147,6 +156,10 @@ impl FontAtlas {
             .filter_map(|c| self.glyph_map.get(&c))
             .map(|metrics| metrics.advance_width)
             .sum()
+    }
+
+    pub fn get_glyph(&self, ch: char) -> Option<&GlyphMetrics> {
+        self.glyph_map.get(&ch)
     }
 }
 

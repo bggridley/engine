@@ -1,7 +1,7 @@
 use anyhow::Result;
 use engine::{
-    gui::{ButtonComponent, PanelComponent, ContainerPanel, GUIComponent, UISystem, LayoutSpec, SizeSpec, HAlign, VAlign, Transform2D},
-    renderer::{Renderer, VulkanContext, RenderContext},
+    gui::{ButtonComponent, PanelComponent, ContainerPanel, GUIComponent, UISystem, LayoutSpec, SizeSpec, HAlign, VAlign, Transform2D, TextComponent},
+    renderer::{Renderer, VulkanContext, RenderContext, FontAtlas},
     window::EventLoop,
 };
 use std::sync::Arc;
@@ -32,6 +32,14 @@ fn main() -> Result<()> {
     let context = Arc::new(VulkanContext::new(window.clone())?);
     let mut renderer = Renderer::new(context.clone(), window_size.width, window_size.height)?;
 
+    // Load font atlas
+    let font_atlas = Arc::new(FontAtlas::load(
+        "./assets/Lato-Regular.ttf",
+        &context.device,
+        &context.instance,
+        context.physical_device,
+    )?);
+
     let mut ui = UISystem::new();
 
     // === TOP HEADER ROW (full width) ===
@@ -52,16 +60,22 @@ fn main() -> Result<()> {
     let sidebar_row2 = left_container.grid_mut().add_row();
     let sidebar_row3 = left_container.grid_mut().add_row();
 
-    // Create ECS buttons
-    let ecs_button1 = ButtonComponent::new(&context)?;
-    let ecs_button2 = ButtonComponent::new(&context)?;
-    let ecs_button3 = ButtonComponent::new(&context)?;
+    // Create ECS buttons with text
+    let mut ecs_button1 = ButtonComponent::new(&context)?;
+    ecs_button1.set_text(TextComponent::new("Entity 1", font_atlas.clone(), 16.0, &context)?);
+
+    let mut ecs_button2 = ButtonComponent::new(&context)?;
+    ecs_button2.set_text(TextComponent::new("Entity 2", font_atlas.clone(), 16.0, &context)?);
+
+    let mut ecs_button3 = ButtonComponent::new(&context)?;
+    ecs_button3.set_text(TextComponent::new("Entity 3", font_atlas.clone(), 16.0, &context)?);
 
     // Add buttons to sidebar rows (one button per row, takes full width of that row)
     let button_spec = LayoutSpec::new(SizeSpec::Percent(1.0), SizeSpec::Fixed(30.0))
         .with_alignment(HAlign::Center, VAlign::Top)
         .with_padding(0.0)
         .with_margin(0.0);
+
 
     left_container.grid_mut().get_row_mut(sidebar_row1).unwrap().add_component(Box::new(ecs_button1), button_spec);
     left_container.grid_mut().get_row_mut(sidebar_row2).unwrap().add_component(Box::new(ecs_button2), button_spec);

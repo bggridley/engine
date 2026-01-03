@@ -17,6 +17,8 @@ use std::path::PathBuf;
 pub enum ShaderId {
     TriangleVertex,
     TriangleFrag,
+    TextVertex,
+    TextFrag,
 }
 
 // Static metadata associated with each shader
@@ -35,6 +37,14 @@ impl ShaderId {
             },
             ShaderId::TriangleFrag => ShaderMeta {
                 path: "triangle.frag",
+                stage: Fragment,
+            },
+            ShaderId::TextVertex => ShaderMeta {
+                path: "text.vert",
+                stage: Vertex,
+            },
+            ShaderId::TextFrag => ShaderMeta {
+                path: "text.frag",
                 stage: Fragment,
             },
         }

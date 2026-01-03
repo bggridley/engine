@@ -16,6 +16,9 @@ pub use grid::{Grid, GridRow, LayoutConstraints};
 mod layout;
 pub use layout::{ComputedLayout, HAlign, LayoutSpec, SizeSpec, VAlign};
 
+mod text;
+pub use text::TextComponent;
+
 pub use glam::Vec2;
 
 #[derive(Clone, Copy, Debug)]

@@ -14,6 +14,8 @@ pub enum PipelineId {
     BasicGeometry,
     /// UI rendering with alpha blending
     UI,
+    /// Text rendering with font atlas
+    Text,
 }
 
 /// Static metadata for pipeline configuration
@@ -39,6 +41,13 @@ impl PipelineId {
                 vertex_shader: ShaderId::TriangleVertex,
                 fragment_shader: ShaderId::TriangleFrag,
                 vertex_format: VertexFormat::ColorVertex2D,
+                blend_enabled: true,
+                cull_mode: vk::CullModeFlags::NONE,
+            },
+            PipelineId::Text => PipelineMeta {
+                vertex_shader: ShaderId::TextVertex,
+                fragment_shader: ShaderId::TextFrag,
+                vertex_format: VertexFormat::TexturedVertex2D,
                 blend_enabled: true,
                 cull_mode: vk::CullModeFlags::NONE,
             },

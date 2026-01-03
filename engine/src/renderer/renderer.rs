@@ -253,7 +253,7 @@ impl Renderer {
         pipeline_manager.build_all()?;
 
         Ok(Self {
-            context,
+            context: context.clone(),
             swapchain,
             swapchain_loader,
             command_pool,
@@ -265,6 +265,7 @@ impl Renderer {
             width,
             height,
             projection: glam::Mat4::IDENTITY,
+
         })
     }
 

@@ -173,6 +173,7 @@ pub struct PipelineBuilder {
     front_face: vk::FrontFace,
     color_format: vk::Format,
     enable_blending: bool,
+    descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
 }
 
 impl PipelineBuilder {
@@ -188,6 +189,7 @@ impl PipelineBuilder {
             front_face: vk::FrontFace::COUNTER_CLOCKWISE,
             color_format: vk::Format::B8G8R8A8_SRGB,
             enable_blending: false,
+            descriptor_set_layouts: Vec::new(),
         }
     }
 
@@ -227,6 +229,11 @@ impl PipelineBuilder {
         self
     }
 
+    pub fn descriptor_set_layouts(mut self, layouts: Vec<vk::DescriptorSetLayout>) -> Self {
+        self.descriptor_set_layouts = layouts;
+        self
+    }
+
     pub fn build(
         self,
         device: &Arc<ash::Device>,
@@ -246,19 +253,22 @@ impl PipelineBuilder {
             )?
         };
 
-        // Create pipeline layout with push constants
+        // Create pipeline layout with push constants and descriptor sets
         let push_constant_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .offset(0)
             .size(std::mem::size_of::<crate::renderer::PushConstants2D>() as u32);
 
         let push_constant_ranges = [push_constant_range];
+        let mut layout_info = vk::PipelineLayoutCreateInfo::default()
+            .push_constant_ranges(&push_constant_ranges);
+        
+        if !self.descriptor_set_layouts.is_empty() {
+            layout_info = layout_info.set_layouts(&self.descriptor_set_layouts);
+        }
+
         let pipeline_layout = unsafe {
-            device.create_pipeline_layout(
-                &vk::PipelineLayoutCreateInfo::default()
-                    .push_constant_ranges(&push_constant_ranges),
-                None,
-            )?
+            device.create_pipeline_layout(&layout_info, None)?
         };
 
         // Vertex input state

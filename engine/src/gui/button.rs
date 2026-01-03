@@ -1,22 +1,24 @@
 use anyhow::Result;
 use std::sync::Arc;
-use crate::renderer::{ColorVertex2D, Mesh, PipelineId, RenderContext, VertexBuffer};
-use crate::gui::{GUIComponent, Transform2D};
+use std::cell::RefCell;
+use crate::renderer::{ColorVertex2D, Mesh, PipelineId, RenderContext, VertexBuffer, FontAtlas};
+use crate::gui::{GUIComponent, Transform2D, TextComponent};
 
 use crate::renderer::PushConstants2D;
 
-/// Triangle renderer - just holds the mesh geometry
-/// Pipeline is managed centrally by PipelineManager
+/// Button component with optional text
 pub struct ButtonComponent {
     mesh: Mesh<ColorVertex2D>,
     transform: Transform2D,
+    text: Option<RefCell<TextComponent>>,
 }
 
 impl GUIComponent for ButtonComponent {
-    /// Render the triangle using the specified pipeline
+    /// Render the button and optional text
     fn render(&self, ctx: &RenderContext, renderer: &mut crate::renderer::Renderer) -> Result<()> {
         let pipeline = renderer.get_pipeline(PipelineId::BasicGeometry)?;
-        let pipeline_layout = renderer.get_pipeline_layout(PipelineId::BasicGeometry).unwrap();
+        let pipeline_layout = renderer.get_pipeline_layout(PipelineId::BasicGeometry)
+            .ok_or_else(|| anyhow::anyhow!("Pipeline layout not found"))?;
         ctx.bind_pipeline(pipeline);
 
         // Set push constants (projection + transform)
@@ -31,6 +33,18 @@ impl GUIComponent for ButtonComponent {
         ctx.push_constants(pipeline_layout, &push);
         
         self.mesh.draw(ctx)?;
+        
+        // Render text if present - position it at the button's center
+        if let Some(text_cell) = &self.text {
+            let mut text = text_cell.borrow_mut();
+            // Position text at button center
+            text.set_position(self.transform.position);
+            drop(text);  // Release borrow
+            
+            // Now render
+            let text = text_cell.borrow();
+            text.render(ctx, renderer)?;
+        }
         
         Ok(())
     }
@@ -99,6 +113,12 @@ impl ButtonComponent {
         Ok(ButtonComponent {
             mesh: Mesh::new(vertex_buffer),
             transform: Transform2D::new(),
+            text: None,
         })
+    }
+
+    /// Set the button text
+    pub fn set_text(&mut self, text: TextComponent) {
+        self.text = Some(RefCell::new(text));
     }
 }

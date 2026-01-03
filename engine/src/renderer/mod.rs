@@ -22,8 +22,9 @@ pub use pipeline_manager::{PipelineId, PipelineManager};
 mod shader_manager;
 pub use shader_manager::{ShaderManager, ShaderId};
 
+mod font;
+pub use font::FontAtlas;
+
 mod renderer;
 pub use renderer::{RenderContext, Renderer};
-
-mod font;
 // pub use font::{Font, FontManager};

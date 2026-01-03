@@ -9,5 +9,5 @@ build() {
     
     mkdir -p $OUTPUT_PATH
     cp $REPO/target/$TARGET/release/editor.exe $OUTPUT_PATH/editor.exe
-    cp -r $REPO/engine/shaders $OUTPUT_PATH/shaders
+    cp -r $REPO/engine/shaders/* $OUTPUT_PATH/shaders
 }

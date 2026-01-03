@@ -4,7 +4,7 @@ use ash::vk::{
     Image, ImageCreateInfo, SharingMode, ImageLayout, SampleCountFlags, ImageUsageFlags,
     ImageType, Extent3D, Format, MemoryPropertyFlags, ImageTiling, ImageView, ImageViewCreateInfo,
     ImageViewType, ComponentMapping, ImageSubresourceRange, ImageAspectFlags,
-    CommandBuffer, CommandPool, Queue, CommandBufferAllocateInfo, CommandBufferLevel, 
+    CommandBufferAllocateInfo, CommandBufferLevel, 
     CommandBufferBeginInfo, ImageMemoryBarrier, AccessFlags, PipelineStageFlags,
     DeviceMemory,
 };

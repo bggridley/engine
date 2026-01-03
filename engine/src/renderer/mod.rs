@@ -28,6 +28,9 @@ pub use font::FontAtlas;
 mod texture;
 pub use texture::Texture;
 
+mod sampled_texture;
+pub use sampled_texture::{SampledTexture, SamplerConfig};
+
 mod renderer;
 pub use renderer::{RenderContext, Renderer};
 // pub use font::{Font, FontManager};

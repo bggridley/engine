@@ -40,7 +40,7 @@ fn main() -> Result<()> {
     // Load font atlas at exact target font size
     let font_atlas: Arc<FontAtlas> = Arc::new(FontAtlas::load(
         "./assets/segoeui.ttf",
-        18.0,  // Target font size for pixel-perfect rendering
+        18.0,  // Font size in pixels
         &context.device,
         &context.instance,
         context.physical_device,

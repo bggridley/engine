@@ -53,31 +53,32 @@ impl TextComponent {
                 let height = glyph.height * scale;
                 
                 if width > 0.0 && height > 0.0 {
+                    let bearing_x = glyph.bearing_x * scale;
                     let bearing_y = glyph.bearing_y * scale;
                     let y = baseline_y - bearing_y;
 
                     vertices.push(TexturedVertex2D {
-                        position: [x, y],
+                        position: [x + bearing_x, y],
                         uv: [glyph.uv_min.x, glyph.uv_min.y],
                     });
                     vertices.push(TexturedVertex2D {
-                        position: [x + width, y],
+                        position: [x + bearing_x + width, y],
                         uv: [glyph.uv_max.x, glyph.uv_min.y],
                     });
                     vertices.push(TexturedVertex2D {
-                        position: [x, y + height],
+                        position: [x + bearing_x, y + height],
                         uv: [glyph.uv_min.x, glyph.uv_max.y],
                     });
                     vertices.push(TexturedVertex2D {
-                        position: [x + width, y],
+                        position: [x + bearing_x + width, y],
                         uv: [glyph.uv_max.x, glyph.uv_min.y],
                     });
                     vertices.push(TexturedVertex2D {
-                        position: [x + width, y + height],
+                        position: [x + bearing_x + width, y + height],
                         uv: [glyph.uv_max.x, glyph.uv_max.y],
                     });
                     vertices.push(TexturedVertex2D {
-                        position: [x, y + height],
+                        position: [x + bearing_x, y + height],
                         uv: [glyph.uv_min.x, glyph.uv_max.y],
                     });
                 }

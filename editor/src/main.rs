@@ -1,11 +1,10 @@
 use anyhow::Result;
 use engine::{
-    gui::{ButtonComponent, PanelComponent, ContainerPanel, GUIComponent, UISystem, LayoutSpec, SizeSpec, HAlign, VAlign, Transform2D, TextComponent},
-    renderer::{Renderer, VulkanContext, RenderContext, FontAtlas},
+    gui::{ButtonComponent, PanelComponent, ContainerPanel, ComponentRef, UISystem, LayoutSpec, SizeSpec, HAlign, VAlign, TextComponent},
+    renderer::{Renderer, VulkanContext, FontAtlas},
     window::EventLoop,
 };
 use std::sync::Arc;
-use std::cell::RefCell;
 use winit::{
     dpi::PhysicalSize,
     event::{Event, WindowEvent},
@@ -40,8 +39,8 @@ fn main() -> Result<()> {
 
     // Load font atlas at exact target font size
     let font_atlas: Arc<FontAtlas> = Arc::new(FontAtlas::load(
-        "./assets/Inter.ttf",
-        18.5,  // Target font size for pixel-perfect rendering
+        "./assets/segoeui.ttf",
+        18.0,  // Target font size for pixel-perfect rendering
         &context.device,
         &context.instance,
         context.physical_device,
@@ -52,12 +51,43 @@ fn main() -> Result<()> {
 
     let mut ui = UISystem::new();
 
-    // === TOP HEADER ROW (full width) ===
-    let header_row = ui.grid.add_row();
-    let header_panel = PanelComponent::new(&context, [0.1, 0.1, 0.15])?;
-    let header_spec = LayoutSpec::new(SizeSpec::Percent(1.0), SizeSpec::Fixed(60.0))
-        .with_alignment(HAlign::Center, VAlign::Top);
-    ui.grid.get_row_mut(header_row).unwrap().add_component(Box::new(header_panel), header_spec);
+    // === MENU BAR (File, Edit, View, Help) ===
+    let menu_row = ui.grid.add_row();
+    let mut menu_container = ContainerPanel::new(&context, [0.08, 0.08, 0.12])?;
+    
+    // Create a single row in the menu container for horizontal layout
+    let menu_items_row = menu_container.grid_mut().add_row();
+    
+    // Create menu buttons
+    let mut file_button = ButtonComponent::new(&context)?;
+    file_button.set_text(TextComponent::new("File", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
+    
+    let mut edit_button = ButtonComponent::new(&context)?;
+    edit_button.set_text(TextComponent::new("Edit", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
+    
+    let mut view_button = ButtonComponent::new(&context)?;
+    view_button.set_text(TextComponent::new("View", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
+    
+    let mut help_button = ButtonComponent::new(&context)?;
+    help_button.set_text(TextComponent::new("Help", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
+    
+    // Menu button spec
+    let menu_button_spec = LayoutSpec::new(SizeSpec::Fixed(70.0), SizeSpec::Percent(1.0))
+        .with_alignment(HAlign::Left, VAlign::Middle)
+        .with_padding(0.0)
+        .with_margin(0.0);
+    
+    menu_container.grid_mut().get_row_mut(menu_items_row).unwrap().add_component(Box::new(file_button), menu_button_spec);
+    menu_container.grid_mut().get_row_mut(menu_items_row).unwrap().add_component(Box::new(edit_button), menu_button_spec);
+    menu_container.grid_mut().get_row_mut(menu_items_row).unwrap().add_component(Box::new(view_button), menu_button_spec);
+    menu_container.grid_mut().get_row_mut(menu_items_row).unwrap().add_component(Box::new(help_button), menu_button_spec);
+    
+    // Wrap menu container
+    let (menu_wrapper, menu_handle) = ComponentRef::new(menu_container);
+    
+    let menu_spec = LayoutSpec::new(SizeSpec::Percent(1.0), SizeSpec::Fixed(18.0))
+        .with_alignment(HAlign::Left, VAlign::Top);
+    ui.grid.get_row_mut(menu_row).unwrap().add_component(Box::new(menu_wrapper), menu_spec);
 
     // === MAIN ROW: Left sidebar + Right content ===
     let main_row = ui.grid.add_row();
@@ -72,113 +102,34 @@ fn main() -> Result<()> {
 
     // Create ECS buttons with text
     let mut ecs_button1 = ButtonComponent::new(&context)?;
-    ecs_button1.set_text(TextComponent::new("FPS: 0.0", font_atlas.clone(), 18.5, text_descriptor_layout, &context)?);
+    ecs_button1.set_text(TextComponent::new("FPS: 0.0", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
+    let (fps_button_wrapper, fps_button) = ComponentRef::new(ecs_button1);
     
-    // Wrap FPS button in Arc<RefCell> so we can update it from the event loop
-    let fps_button = Arc::new(RefCell::new(ecs_button1));
-
     let mut ecs_button2 = ButtonComponent::new(&context)?;
-    ecs_button2.set_text(TextComponent::new("Entity 2", font_atlas.clone(), 18.5, text_descriptor_layout, &context)?);
+    ecs_button2.set_text(TextComponent::new("Entity 2", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
 
     let mut ecs_button3 = ButtonComponent::new(&context)?;
-    ecs_button3.set_text(TextComponent::new("Entity 3", font_atlas.clone(), 18.5, text_descriptor_layout, &context)?);
+    ecs_button3.set_text(TextComponent::new("Entity 3", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
 
-    // Add buttons to sidebar rows (one button per row, takes full width of that row)
+    // Add buttons to sidebar rows
     let button_spec = LayoutSpec::new(SizeSpec::Percent(1.0), SizeSpec::Fixed(30.0))
         .with_alignment(HAlign::Center, VAlign::Top)
         .with_padding(0.0)
         .with_margin(0.0);
-
-    // Create a wrapper for the FPS button
-    struct ButtonWrapper {
-        button: Arc<RefCell<ButtonComponent>>,
-        cached_transform: Transform2D,
-    }
     
-    impl GUIComponent for ButtonWrapper {
-        fn render(&self, ctx: &RenderContext, renderer: &mut Renderer) -> Result<()> {
-            let mut button = self.button.borrow_mut();
-            *button.transform_mut() = self.cached_transform;
-            button.render(ctx, renderer)
-        }
-        fn transform(&self) -> &Transform2D {
-            &self.cached_transform
-        }
-        fn transform_mut(&mut self) -> &mut Transform2D {
-            &mut self.cached_transform
-        }
-        fn handle_mouse_down(&mut self, x: f32, y: f32) {
-            self.button.borrow_mut().handle_mouse_down(x, y);
-        }
-        fn handle_mouse_up(&mut self, x: f32, y: f32) {
-            self.button.borrow_mut().handle_mouse_up(x, y);
-        }
-        fn handle_mouse_move(&mut self, x: f32, y: f32) {
-            self.button.borrow_mut().handle_mouse_move(x, y);
-        }
-        fn destroy(&self, device: &ash::Device) {
-            self.button.borrow().destroy(device);
-        }
-    }
-    
-    let fps_button_wrapper = ButtonWrapper {
-        button: fps_button.clone(),
-        cached_transform: Transform2D::new(),
-    };
-        
     left_container.grid_mut().get_row_mut(sidebar_row1).unwrap().add_component(Box::new(fps_button_wrapper), button_spec);
     left_container.grid_mut().get_row_mut(sidebar_row2).unwrap().add_component(Box::new(ecs_button2), button_spec);
     left_container.grid_mut().get_row_mut(sidebar_row3).unwrap().add_component(Box::new(ecs_button3), button_spec);
 
-    // Wrap in RefCell to allow interior mutability for layout updates
-    let left_container = RefCell::new(left_container);
-
+    // Wrap container for external access
+    let (container_wrapper, container_handle) = ComponentRef::new(left_container);
+    
     // Add left container to main row
     let left_container_spec = LayoutSpec::new(SizeSpec::Percent(0.15), SizeSpec::Percent(1.0))
         .with_alignment(HAlign::Left, VAlign::Middle);
     
-    // We need a wrapper that implements GUIComponent and forwards to the RefCell
-    struct ContainerWrapper {
-        container: Arc<RefCell<ContainerPanel>>,
-        cached_transform: Transform2D,
-    }
-    
-    impl GUIComponent for ContainerWrapper {
-        fn render(&self, ctx: &RenderContext, renderer: &mut Renderer) -> Result<()> {
-            // Sync the cached transform with the container before rendering
-            let mut container_mut = self.container.borrow_mut();
-            *container_mut.transform_mut() = self.cached_transform;
-            container_mut.update_grid_layout();
-            container_mut.render(ctx, renderer)
-        }
-        fn transform(&self) -> &Transform2D {
-            &self.cached_transform
-        }
-        fn transform_mut(&mut self) -> &mut Transform2D {
-            &mut self.cached_transform
-        }
-        fn handle_mouse_down(&mut self, x: f32, y: f32) {
-            self.container.borrow_mut().handle_mouse_down(x, y);
-        }
-        fn handle_mouse_up(&mut self, x: f32, y: f32) {
-            self.container.borrow_mut().handle_mouse_up(x, y);
-        }
-        fn handle_mouse_move(&mut self, x: f32, y: f32) {
-            self.container.borrow_mut().handle_mouse_move(x, y);
-        }
-        fn destroy(&self, device: &ash::Device) {
-            self.container.borrow().destroy(device);
-        }
-    }
-    
-    let container_arc = Arc::new(left_container);
-    let wrapper = ContainerWrapper {
-        container: container_arc.clone(),
-        cached_transform: Transform2D::new(),
-    };
-    
     ui.grid.get_row_mut(main_row).unwrap().add_component(
-        Box::new(wrapper),
+        Box::new(container_wrapper),
         left_container_spec,
     );
 
@@ -192,7 +143,8 @@ fn main() -> Result<()> {
     ui.grid.set_bounds(0.0, 0.0, window_size.width as f32, window_size.height as f32);
     
     // Update nested container layouts
-    container_arc.borrow_mut().update_grid_layout();
+    menu_handle.borrow_mut().update_grid_layout();
+    container_handle.borrow_mut().update_grid_layout();
 
     println!("Vulkan Engine initialized!");
 
@@ -253,7 +205,8 @@ fn main() -> Result<()> {
                             r.handle_resize(width, height, window.scale_factor() as f32);
                         }
                         ui.grid.set_bounds(0.0, 0.0, width as f32, height as f32);
-                        container_arc.borrow_mut().update_grid_layout();
+                        menu_handle.borrow_mut().update_grid_layout();
+                        container_handle.borrow_mut().update_grid_layout();
                     }
                     
                     // Update FPS counter

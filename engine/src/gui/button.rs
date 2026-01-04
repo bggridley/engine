@@ -11,6 +11,7 @@ pub struct ButtonComponent {
     mesh: Mesh<ColorVertex2D>,
     transform: Transform2D,
     text: Option<RefCell<TextComponent>>,
+    is_hovered: bool,
 }
 
 impl GUIComponent for ButtonComponent {
@@ -21,13 +22,21 @@ impl GUIComponent for ButtonComponent {
             .ok_or_else(|| anyhow::anyhow!("Pipeline layout not found"))?;
         ctx.bind_pipeline(pipeline);
 
-        // Set push constants (projection + transform)
+        // Set push constants (projection + transform + color modulation)
+        let color_mod = if self.is_hovered {
+            [0.7, 0.7, 0.7]  // 30% darker on hover
+        } else {
+            [1.0, 1.0, 1.0]  // Normal color
+        };
+        
         let push = PushConstants2D {
             projection: renderer.projection,  // Use ortho for 2D
             transform: 
             glam::Mat4::from_translation(glam::Vec3::new(self.transform.position.x, self.transform.position.y, 0.0)) *
             glam::Mat4::from_rotation_z(self.transform.rotation) * 
             glam::Mat4::from_scale(glam::Vec3::new(self.transform.scale.x, self.transform.scale.y, 1.0)),
+            color_modulation: color_mod,
+            _padding: 0.0,
         };
 
         ctx.push_constants(pipeline_layout, &push);
@@ -59,8 +68,8 @@ impl GUIComponent for ButtonComponent {
         
     }
 
-    fn handle_mouse_move(&mut self, _x: f32, _y: f32) {
-
+    fn handle_mouse_move(&mut self, x: f32, y: f32) {
+        self.is_hovered = self.transform.contains_point(glam::Vec2::new(x, y));
     }
 
     fn transform(&self) -> &Transform2D {
@@ -121,6 +130,7 @@ impl ButtonComponent {
             mesh: Mesh::new(vertex_buffer),
             transform: Transform2D::new(),
             text: None,
+            is_hovered: false,
         })
     }
 

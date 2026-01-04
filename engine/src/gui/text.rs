@@ -26,8 +26,25 @@ impl TextComponent {
             font_atlas.get_glyph(ch).map(|g| g.advance_width * scale)
         }).sum();
 
+        // Calculate the actual height bounds of the text to center it vertically
+        let mut min_y = f32::MAX;
+        let mut max_y = f32::MIN;
+        for ch in text.chars() {
+            if let Some(glyph) = font_atlas.get_glyph(ch) {
+                let bearing_y = glyph.bearing_y * scale;
+                let height = glyph.height * scale;
+                let top = -bearing_y;
+                let bottom = top + height;
+                min_y = min_y.min(top);
+                max_y = max_y.max(bottom);
+            }
+        }
+        
+        // Center the text vertically around y=0
+        let text_height = max_y - min_y;
+        let baseline_y = -text_height / 2.0 - min_y;
+        
         let start_x = -total_width / 2.0;
-        let baseline_y = font_size * 0.25;
         let mut x = start_x;
 
         for ch in text.chars() {
@@ -176,6 +193,8 @@ impl GUIComponent for TextComponent {
                 self.transform.scale.y,
                 1.0,
             )),
+            color_modulation: self.color,  // Use text color
+            _padding: 0.0,
         };
 
         ctx.push_constants(pipeline_layout, &push);

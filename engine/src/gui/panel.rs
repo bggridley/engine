@@ -23,6 +23,8 @@ impl GUIComponent for PanelComponent {
             glam::Mat4::from_translation(glam::Vec3::new(self.transform.position.x, self.transform.position.y, 0.0)) *
             glam::Mat4::from_rotation_z(self.transform.rotation) * 
             glam::Mat4::from_scale(glam::Vec3::new(self.transform.scale.x, self.transform.scale.y, 1.0)),
+            color_modulation: [1.0, 1.0, 1.0],  // No modulation for panels
+            _padding: 0.0,
         };
 
         ctx.push_constants(pipeline_layout, &push);

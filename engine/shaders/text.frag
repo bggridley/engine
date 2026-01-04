@@ -1,6 +1,7 @@
 #version 450
 
 layout(location = 0) in vec2 frag_uv;
+layout(location = 1) in vec3 frag_color;
 
 layout(location = 0) out vec4 out_color;
 
@@ -30,5 +31,5 @@ void main() {
     // Convert back to sRGB for display
     finalAlpha = pow(finalAlpha, 1.0/2.2);
     
-    out_color = vec4(1.0, 1.0, 1.0, finalAlpha);
+    out_color = vec4(frag_color, finalAlpha);  // Use color modulation from push constants
 }

@@ -19,6 +19,9 @@ pub use layout::{ComputedLayout, HAlign, LayoutSpec, SizeSpec, VAlign};
 mod text;
 pub use text::TextComponent;
 
+mod component_ref;
+pub use component_ref::ComponentRef;
+
 pub use glam::Vec2;
 
 #[derive(Clone, Copy, Debug)]

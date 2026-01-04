@@ -25,12 +25,14 @@ pub struct ModelVertex3D {
     pub uv: [f32; 2],
 }
 
-/// Push constants for rendering (projection + transform matrices)
+/// Push constants for rendering (projection + transform matrices + color modulation)
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct PushConstants2D {
     pub projection: glam::Mat4,
     pub transform: glam::Mat4,
+    pub color_modulation: [f32; 3],  // RGB multiplier (e.g., [0.8, 0.8, 0.8] = 20% darker)
+    pub _padding: f32,  // Align to 16 bytes for uniform buffer rules
 }
 
 /// Vertex format descriptor for pipeline creation

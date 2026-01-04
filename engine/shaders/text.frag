@@ -9,8 +9,20 @@ layout(set = 0, binding = 0) uniform texture2D fontTexture;
 layout(set = 0, binding = 1) uniform sampler fontSampler;
 
 void main() {
-    // Simple clean text rendering without gamma correction or effects
+    // Sample the main text alpha
     float alpha = texture(sampler2D(fontTexture, fontSampler), frag_uv).r;
     
-    out_color = vec4(frag_color, alpha);
+    // Add very subtle shadow for contrast
+    vec2 texelSize = 1.0 / vec2(textureSize(sampler2D(fontTexture, fontSampler), 0));
+    float shadow = 0.0;
+    shadow += texture(sampler2D(fontTexture, fontSampler), frag_uv + vec2(-1.0, -1.0) * texelSize).r;
+    shadow += texture(sampler2D(fontTexture, fontSampler), frag_uv + vec2(1.0, -1.0) * texelSize).r;
+    shadow += texture(sampler2D(fontTexture, fontSampler), frag_uv + vec2(-1.0, 1.0) * texelSize).r;
+    shadow += texture(sampler2D(fontTexture, fontSampler), frag_uv + vec2(1.0, 1.0) * texelSize).r;
+    shadow *= 0.08; // Very subtle
+    
+    // Combine
+    float finalAlpha = clamp(alpha + shadow * (1.0 - alpha), 0.0, 1.0);
+    
+    out_color = vec4(frag_color, finalAlpha);
 }

@@ -12,6 +12,7 @@ pub struct ButtonComponent {
     transform: Transform2D,
     text: Option<RefCell<TextComponent>>,
     is_hovered: bool,
+    color: [f32; 3],  // Base color for the button
 }
 
 impl GUIComponent for ButtonComponent {
@@ -89,32 +90,32 @@ impl GUIComponent for ButtonComponent {
 }
 
 impl ButtonComponent {
-    pub fn new(context: &Arc<crate::renderer::VulkanContext>) -> Result<Self> {
-        // Define triangle vertices
+    pub fn new(context: &Arc<crate::renderer::VulkanContext>, color: [f32; 3]) -> Result<Self> {
+        // Define quad vertices with solid color
         let vertices = [
             ColorVertex2D {
                 position: [-0.5, 0.5],
-                color: [1.0, 0.0, 0.0],
+                color,
             },
             ColorVertex2D {
                 position: [-0.5, -0.5],
-                color: [1.0, 0.0, 0.0],
+                color,
             },
             ColorVertex2D {
                 position: [0.5, -0.5],
-                color: [0.0, 0.0, 1.0],
+                color,
             },
             ColorVertex2D {
                 position: [0.5, -0.5],
-                color: [0.0, 0.0, 1.0],
+                color,
             },
             ColorVertex2D {
                 position: [0.5, 0.5],
-                color: [0.0, 0.0, 1.0],
+                color,
             },
             ColorVertex2D {
                 position: [-0.5, 0.5],
-                color: [1.0, 0.0, 0.0],
+                color,
             },
         ];
 
@@ -131,6 +132,7 @@ impl ButtonComponent {
             transform: Transform2D::new(),
             text: None,
             is_hovered: false,
+            color,
         })
     }
 

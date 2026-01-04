@@ -59,16 +59,16 @@ fn main() -> Result<()> {
     let menu_items_row = menu_container.grid_mut().add_row();
     
     // Create menu buttons
-    let mut file_button = ButtonComponent::new(&context)?;
+    let mut file_button = ButtonComponent::new(&context, [0.2, 0.2, 0.22])?;
     file_button.set_text(TextComponent::new("File", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
     
-    let mut edit_button = ButtonComponent::new(&context)?;
+    let mut edit_button = ButtonComponent::new(&context, [0.2, 0.2, 0.22])?;
     edit_button.set_text(TextComponent::new("Edit", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
     
-    let mut view_button = ButtonComponent::new(&context)?;
+    let mut view_button = ButtonComponent::new(&context, [0.2, 0.2, 0.22])?;
     view_button.set_text(TextComponent::new("View", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
     
-    let mut help_button = ButtonComponent::new(&context)?;
+    let mut help_button = ButtonComponent::new(&context, [0.2, 0.2, 0.22])?;
     help_button.set_text(TextComponent::new("Help", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
     
     // Menu button spec
@@ -101,14 +101,14 @@ fn main() -> Result<()> {
     let sidebar_row3 = left_container.grid_mut().add_row();
 
     // Create ECS buttons with text
-    let mut ecs_button1 = ButtonComponent::new(&context)?;
+    let mut ecs_button1 = ButtonComponent::new(&context, [0.8, 0.0, 0.4])?;
     ecs_button1.set_text(TextComponent::new("FPS: 0.0", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
     let (fps_button_wrapper, fps_button) = ComponentRef::new(ecs_button1);
     
-    let mut ecs_button2 = ButtonComponent::new(&context)?;
+    let mut ecs_button2 = ButtonComponent::new(&context, [0.8, 0.0, 0.4])?;
     ecs_button2.set_text(TextComponent::new("Entity 2", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
 
-    let mut ecs_button3 = ButtonComponent::new(&context)?;
+    let mut ecs_button3 = ButtonComponent::new(&context, [0.8, 0.0, 0.4])?;
     ecs_button3.set_text(TextComponent::new("Entity 3", font_atlas.clone(), 18.0, text_descriptor_layout, &context)?);
 
     // Add buttons to sidebar rows

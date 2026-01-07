@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::cell::RefCell;
 use anyhow::Result;
 
-use super::{GUIComponent, Transform2D, ButtonComponent, ContainerPanel};
+use super::{GUIComponent, Transform, ButtonComponent, ContainerPanel};
 use crate::renderer::{RenderContext, Renderer};
 
 /// A reference-counted, interior-mutable wrapper for GUI components
@@ -10,7 +10,7 @@ use crate::renderer::{RenderContext, Renderer};
 /// while they're also owned by the UI grid
 pub struct ComponentRef<T> {
     inner: Arc<RefCell<T>>,
-    cached_transform: Transform2D,
+    cached_transform: Transform,
 }
 
 impl<T> ComponentRef<T> {
@@ -18,7 +18,7 @@ impl<T> ComponentRef<T> {
         let arc = Arc::new(RefCell::new(component));
         let wrapper = ComponentRef {
             inner: arc.clone(),
-            cached_transform: Transform2D::new(),
+            cached_transform: Transform::new(),
         };
         (wrapper, arc)
     }
@@ -40,11 +40,11 @@ macro_rules! impl_component_ref {
                 component.render(ctx, renderer)
             }
             
-            fn transform(&self) -> &Transform2D {
+            fn transform(&self) -> &Transform {
                 &self.cached_transform
             }
             
-            fn transform_mut(&mut self) -> &mut Transform2D {
+            fn transform_mut(&mut self) -> &mut Transform {
                 &mut self.cached_transform
             }
             

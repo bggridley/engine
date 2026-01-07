@@ -1,13 +1,13 @@
 use anyhow::Result;
 use std::sync::Arc;
 use crate::renderer::{ColorVertex2D, Mesh, PipelineId, RenderContext, VertexBuffer};
-use crate::gui::{GUIComponent, Transform2D};
+use crate::gui::{GUIComponent, Transform};
 use crate::renderer::PushConstants2D;
 
 /// A panel is a rectangular container that can render a background and hold other components
 pub struct PanelComponent {
     mesh: Mesh<ColorVertex2D>,
-    transform: Transform2D,
+    transform: Transform,
     color: [f32; 3],
 }
 
@@ -38,11 +38,11 @@ impl GUIComponent for PanelComponent {
     fn handle_mouse_up(&mut self, _x: f32, _y: f32) {}
     fn handle_mouse_move(&mut self, _x: f32, _y: f32) {}
 
-    fn transform(&self) -> &Transform2D {
+    fn transform(&self) -> &Transform {
         &self.transform
     }
     
-    fn transform_mut(&mut self) -> &mut Transform2D {
+    fn transform_mut(&mut self) -> &mut Transform {
         &mut self.transform
     }
 
@@ -93,7 +93,7 @@ impl PanelComponent {
 
         Ok(PanelComponent {
             mesh: Mesh::new(vertex_buffer),
-            transform: Transform2D::new(),
+            transform: Transform::new(),
             color,
         })
     }

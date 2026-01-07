@@ -2,14 +2,14 @@ use anyhow::Result;
 use std::sync::Arc;
 use std::cell::RefCell;
 use crate::renderer::{ColorVertex2D, Mesh, PipelineId, RenderContext, VertexBuffer};
-use crate::gui::{GUIComponent, Transform2D, TextComponent};
+use crate::gui::{GUIComponent, Transform, TextComponent};
 
 use crate::renderer::PushConstants2D;
 
 /// Button component with optional text
 pub struct ButtonComponent {
     mesh: Mesh<ColorVertex2D>,
-    transform: Transform2D,
+    transform: Transform,
     text: Option<RefCell<TextComponent>>,
     is_hovered: bool,
     color: [f32; 3],  // Base color for the button
@@ -73,11 +73,11 @@ impl GUIComponent for ButtonComponent {
         self.is_hovered = self.transform.contains_point(glam::Vec2::new(x, y));
     }
 
-    fn transform(&self) -> &Transform2D {
+    fn transform(&self) -> &Transform {
         &self.transform
     }
     
-    fn transform_mut(&mut self) -> &mut Transform2D {
+    fn transform_mut(&mut self) -> &mut Transform {
         &mut self.transform
     }
 
@@ -129,7 +129,7 @@ impl ButtonComponent {
 
         Ok(ButtonComponent {
             mesh: Mesh::new(vertex_buffer),
-            transform: Transform2D::new(),
+            transform: Transform::new(),
             text: None,
             is_hovered: false,
             color,

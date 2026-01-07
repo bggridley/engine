@@ -1,13 +1,13 @@
 use anyhow::Result;
 use std::sync::Arc;
-use crate::gui::{GUIComponent, Transform2D, Grid, PanelComponent};
+use crate::gui::{GUIComponent, Transform, Grid, PanelComponent};
 use crate::renderer::RenderContext;
 
 /// A panel that can contain other components in a grid layout
 pub struct ContainerPanel {
     background: PanelComponent,
     grid: Grid,
-    transform: Transform2D,
+    transform: Transform,
 }
 
 impl GUIComponent for ContainerPanel {
@@ -33,11 +33,11 @@ impl GUIComponent for ContainerPanel {
         self.grid.handle_mouse_move(x, y);
     }
 
-    fn transform(&self) -> &Transform2D {
+    fn transform(&self) -> &Transform {
         &self.transform
     }
     
-    fn transform_mut(&mut self) -> &mut Transform2D {
+    fn transform_mut(&mut self) -> &mut Transform {
         &mut self.transform
     }
 
@@ -56,7 +56,7 @@ impl ContainerPanel {
         Ok(ContainerPanel {
             background: PanelComponent::new(context, color)?,
             grid: Grid::new(),
-            transform: Transform2D::new(),
+            transform: Transform::new(),
         })
     }
 

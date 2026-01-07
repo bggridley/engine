@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 use ash::vk;
-use crate::gui::{GUIComponent, Transform2D};
+use crate::gui::{GUIComponent, Transform};
 use crate::renderer::{RenderContext, Renderer, FontAtlas, TexturedVertex2D, VertexBuffer, Mesh, PipelineId, PushConstants2D, SampledTexture, SamplerConfig};
 use glam::Vec2;
 
@@ -9,7 +9,7 @@ use glam::Vec2;
 pub struct TextComponent {
     text: String,
     font_atlas: Arc<FontAtlas>,
-    transform: Transform2D,
+    transform: Transform,
     color: [f32; 3],
     font_size: f32,
     mesh: Mesh<TexturedVertex2D>,
@@ -116,7 +116,7 @@ impl TextComponent {
         Ok(TextComponent {
             text: text.to_string(),
             font_atlas,
-            transform: Transform2D::new(),
+            transform: Transform::new(),
             color: [1.0, 1.0, 1.0],
             font_size,
             mesh: Mesh::new(vertex_buffer),
@@ -204,11 +204,11 @@ impl GUIComponent for TextComponent {
         Ok(())
     }
 
-    fn transform(&self) -> &Transform2D {
+    fn transform(&self) -> &Transform {
         &self.transform
     }
 
-    fn transform_mut(&mut self) -> &mut Transform2D {
+    fn transform_mut(&mut self) -> &mut Transform {
         &mut self.transform
     }
 
